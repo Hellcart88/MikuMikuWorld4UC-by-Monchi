@@ -32,13 +32,13 @@ namespace MikuMikuWorld
 			if (file.is_open()) {
 				file << R"([Window][###notes_timeline]
 Pos=251,55
-Size=808,954
+Size=804,954
 Collapsed=0
 DockId=0x00000001,0
 
 [Window][###chart_properties]
-Pos=1061,580
-Size=260,429
+Pos=1057,580
+Size=264,429
 Collapsed=0
 DockId=0x0000000C,0
 
@@ -73,8 +73,8 @@ Collapsed=0
 DockId=0x0000000A,0
 
 [Window][InvisibleWindow]
-Pos=0,55
-Size=1920,954
+Pos=0,35
+Size=1920,974
 Collapsed=0
 
 [Window][Debug##Default]
@@ -89,8 +89,8 @@ Size=1920,35
 Collapsed=0
 
 [Window][###score_preview]
-Pos=1061,55
-Size=859,523
+Pos=1057,55
+Size=863,523
 Collapsed=0
 DockId=0x00000005,0
 
@@ -127,6 +127,12 @@ Pos=0,0
 Size=1920,1009
 Collapsed=0
 
+[Window][ファイルの削除]
+ViewportPos=752,422
+ViewportId=0x38D7DE83
+Size=396,194
+Collapsed=0
+
 [Table][0xD68DAD8B,2]
 RefScale=16
 Column 0  Weight=1.0000
@@ -134,21 +140,21 @@ Column 1  Width=89
 
 [Table][0x519E09DE,2]
 RefScale=16
-Column 0  Width=192
+Column 0  Width=159
 Column 1  Weight=1.0000
 
 [Docking][Data]
-DockSpace           ID=0xF442860A Window=0xD8117908 Pos=0,78 Size=1920,954 Split=X
+DockSpace           ID=0xF442860A Window=0xD8117908 Pos=0,58 Size=1920,974 Split=X
   DockNode          ID=0x00000007 Parent=0xF442860A SizeRef=249,954 Split=Y Selected=0xCB59F716
     DockNode        ID=0x00000009 Parent=0x00000007 SizeRef=249,555 Selected=0xCB59F716
     DockNode        ID=0x0000000A Parent=0x00000007 SizeRef=249,397 Selected=0xEC13F1BA
   DockNode          ID=0x00000008 Parent=0xF442860A SizeRef=1669,954 Split=X
-    DockNode        ID=0x00000001 Parent=0x00000008 SizeRef=808,765 CentralNode=1 Selected=0x7832EA6E
-    DockNode        ID=0x00000002 Parent=0x00000008 SizeRef=859,765 Split=Y
+    DockNode        ID=0x00000001 Parent=0x00000008 SizeRef=804,765 CentralNode=1 Selected=0x7832EA6E
+    DockNode        ID=0x00000002 Parent=0x00000008 SizeRef=863,765 Split=Y
       DockNode      ID=0x00000005 Parent=0x00000002 SizeRef=250,523 Selected=0x3A83CA69
       DockNode      ID=0x00000006 Parent=0x00000002 SizeRef=250,429 Split=X Selected=0x25F8FF00
-        DockNode    ID=0x00000003 Parent=0x00000006 SizeRef=526,829 Split=X Selected=0x25F8FF00
-          DockNode  ID=0x0000000C Parent=0x00000003 SizeRef=260,429 Selected=0xD503FE8A
+        DockNode    ID=0x00000003 Parent=0x00000006 SizeRef=530,829 Split=X Selected=0x25F8FF00
+          DockNode  ID=0x0000000C Parent=0x00000003 SizeRef=264,429 Selected=0xD503FE8A
           DockNode  ID=0x0000000D Parent=0x00000003 SizeRef=264,429 Selected=0x25F8FF00
         DockNode    ID=0x00000004 Parent=0x00000006 SizeRef=331,829 Selected=0x0FDBD4A5
 )";

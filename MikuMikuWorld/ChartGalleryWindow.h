@@ -35,7 +35,12 @@ namespace MikuMikuWorld
 		bool recentLoaded = false;
 		bool hasAutoScanned = false;
 		int activeTab = 0;
-		char localSearchPath[512] = ""; 
+
+		std::vector<std::string> searchPaths;
+		char newPathBuffer[512] = "";
+		bool isSearchPathsOpen = true;
+		char searchQuery[256] = "";
+		int currentSortMethod = 0;  // 0: タイトル, 1: アーティスト, 2: 作者, 3: コンボ
 
 		std::unordered_map<std::string, ChartState> galleryStates;
 		std::vector<std::shared_ptr<GalleryItem>> recentItems;

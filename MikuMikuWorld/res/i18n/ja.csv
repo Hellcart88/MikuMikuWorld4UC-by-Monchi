@@ -327,3 +327,38 @@ sort_desc, 降順にソート
 new_waypoint, 新規しおり
 name, 名前
 time, 時間
+
+# ギャラリー関連
+gallery_all, すべて
+gallery_recent, 最近
+gallery_favorites, お気に入り
+gallery_team_projects, チーム制作
+gallery_personal, 作品
+gallery_no_charts, 譜面がありません。
+gallery_file, ファイル名
+gallery_format, 形式
+gallery_title, タイトル
+gallery_artist, 作曲者
+gallery_author, 譜面制作者
+gallery_time, 時間
+gallery_combo, コンボ
+gallery_move_to_folder, フォルダーへ移動
+gallery_uncategorized, - (未分類)
+gallery_create_new_chart, 新規譜面作成
+gallery_recent_charts, 最近の譜面
+gallery_more, もっと見る
+gallery_all_charts, PC内のすべての譜面
+gallery_add_path, パスを追加:
+gallery_start_scan, パスをスキャン
+gallery_delete_file, ファイルの削除
+gallery_delete_confirm, このファイルを完全に削除しますか？
+gallery_type_file, 種類: %s ファイル
+gallery_type_unknown, 種類: 不明なファイル
+gallery_size_kb, サイズ: %llu KB
+gallery_original_location, 元の場所: %s
+gallery_yes_y, はい
+gallery_no_n, いいえ
+gallery_show_search_paths, パスを表示
+gallery_hide_search_paths, パスを隠す
+gallery_search, 検索
+gallery_sort, 並び替え

@@ -23,7 +23,7 @@ namespace MikuMikuWorld
 
 	std::vector<ImVec4> UI::accentColors{
 		ImVec4{ 0.10f, 0.10f, 0.10f, 1.00f }, // User
-		ImVec4{ 0.51f, 0.80f, 0.82f, 1.00f }, // Default : Chart Cyanvas
+		ImVec4{ 0.90f, 0.72f, 0.60f, 1.00f }, // Default : Minori's Color!!!
 		ImVec4{ 0.16f, 0.44f, 0.75f, 1.00f }, // Default : Original MMW
 		ImVec4{ 0.30f, 0.31f, 0.86f, 1.00f }, // Light Music
 		ImVec4{ 0.40f, 0.69f, 0.15f, 1.00f }, // Idol

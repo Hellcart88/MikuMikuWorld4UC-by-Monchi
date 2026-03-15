@@ -90,7 +90,7 @@ background_brightnes,Background Brightness
 lanes_opacity,Lanes Opacity
 video,Video
 notes_se,Notes SE
-show_tick_in_properties, Show Tick in Note Properties Window
+show_tick_in_properties,Show Tick in Note Properties Window
 
 # score editor
 options,Options
@@ -152,8 +152,8 @@ ease_type,Ease Type
 flick_type,Flick Type
 hold_type,Hold Type
 fade_type,Fade Type
-hold_start_type, Hold Start Type
-hold_end_type, Hold End Type
+hold_start_type,Hold Start Type
+hold_end_type,Hold End Type
 metadata,Metadata
 title,Title
 designer,Designer
@@ -179,7 +179,7 @@ combo,Combo
 goto_measure,Go To Measure
 division,%d Division
 division_affix,%d Division
-custom, Custom
+custom,Custom
 custom_division,Custom Division
 snap_mode,Snapping
 snap_mode_relative,Relative Snap
@@ -289,3 +289,74 @@ timeline_time_signature,Timeline - Insert Time Signature
 timeline_hi_speed,Timeline - Insert Hi-Speed Change
 zoom_in,Zoom In
 zoom_out,Zoom Out
+
+# プレビュー・キーコンフィグ関連
+preview,Preview
+score_preview,Score Preview
+notes_speed,Notes Speed
+mirror_score,Mirror Score
+preview_draw_toolbar,Draw Preview Toolbar
+background_brightnes,Background Brightness
+stage_opacity,Stage Opacity
+stage_cover,Stage Cover (Vertical)
+visuals,Visuals
+flicks_animation,Flick Animations
+holds_animation,Hold Animations
+simultaneous_lines,Simultaneous Lines
+holds_alpha,Hold Opacity
+guides_alpha,Guide Opacity
+action,Action
+keys,Keys
+add,Add
+remove,Remove
+none,None
+cmd_key_listen,Waiting for input...
+key_config,Key Config
+
+# Layers & Waypoints
+new_layer,New Layer
+new_folder,New Folder
+create_folder,Create Folder
+layer_merge_confirm,Merge Layer
+layer_merge_msg,Do you want to merge this layer with the one below it?
+layer_delete_confirm,Delete Layer
+layer_delete_msg1,Are you sure you want to delete this layer?
+layer_delete_msg2,All notes inside it will be deleted as well.
+sort_asc,Sort Ascending
+sort_desc,Sort Descending
+new_waypoint,New Waypoint
+name,Name
+time,Time
+
+# Gallery
+gallery_all,All
+gallery_recent,Recent
+gallery_favorites,Favorites
+gallery_team_projects,Team Projects
+gallery_personal,Personal
+gallery_no_charts,No charts found.
+gallery_file,File Name
+gallery_format,Format
+gallery_title,Title
+gallery_artist,Artist
+gallery_author,Chart Author
+gallery_time,Time
+gallery_combo,Combo
+gallery_move_to_folder,Move to Folder
+gallery_uncategorized,- (Uncategorized)
+gallery_create_new_chart,Create New Chart
+gallery_recent_charts,Recent Charts
+gallery_more,More
+gallery_all_charts,All Charts on PC
+gallery_add_path,Add Path:
+gallery_start_scan,Scan Paths
+gallery_delete_file,Delete File
+gallery_delete_confirm,Are you sure you want to permanently delete this file?
+gallery_type_file,Type: %s File
+gallery_type_unknown,Type: Unknown File
+gallery_size_kb,Size: %llu KB
+gallery_original_location,Original Location: %s
+gallery_yes_y,Yes
+gallery_no_n,No
+gallery_show_search_paths,Show Paths
+gallery_hide_search_paths,Hide Paths

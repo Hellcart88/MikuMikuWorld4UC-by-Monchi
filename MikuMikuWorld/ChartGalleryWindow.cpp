@@ -6,6 +6,7 @@
 #include "UI.h"
 #include "IconsFontAwesome5.h"
 #include "Rendering/Texture.h"
+#include "Localization.h"
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -38,9 +39,17 @@ namespace MikuMikuWorld
 						customFolders.push_back(folder.get<std::string>());
 					}
 				}
-				if (j.contains("searchPath")) {
-					strncpy(localSearchPath, j["searchPath"].get<std::string>().c_str(), sizeof(localSearchPath));
+				// --- 変更ここから：複数パスの読み込み ---
+				if (j.contains("searchPaths")) {
+					searchPaths.clear();
+					for (auto& p : j["searchPaths"]) {
+						searchPaths.push_back(p.get<std::string>());
+					}
+				} else if (j.contains("searchPath")) {
+					// 古いバージョンの単一パスデータとの互換性
+					searchPaths.push_back(j["searchPath"].get<std::string>());
 				}
+				// --- 変更ここまで ---
 			} catch (...) {}
 		}
 	}
@@ -57,7 +66,9 @@ namespace MikuMikuWorld
 			}
 		}
 		j["folders"] = customFolders;
-		j["searchPath"] = std::string(localSearchPath);
+		// --- 変更ここから：複数パスの保存 ---
+		j["searchPaths"] = searchPaths;
+		// --- 変更ここまで ---
 		std::string path = Application::getAppDir() + "gallery.json";
 		std::ofstream file(IO::mbToWideStr(path));
 		if (file.is_open()) {
@@ -151,7 +162,7 @@ namespace MikuMikuWorld
 	void ChartGalleryWindow::drawGrid(std::vector<std::shared_ptr<GalleryItem>>& itemsToDraw, const char* gridId)
 	{
 		if (itemsToDraw.empty()) {
-			ImGui::TextDisabled("  No charts to display.");
+			ImGui::TextDisabled("%s", (std::string("  ") + getString("gallery_no_charts")).c_str());
 			return;
 		}
 
@@ -165,30 +176,48 @@ namespace MikuMikuWorld
 		for (int i = 0; i < (int)itemsToDraw.size(); ++i)
 		{
 			auto& item = itemsToDraw[i];
-			// 【追加】描画の直前に galleryStates から最新の状態を反映（同期処理）
 			if (galleryStates.count(item->filepath)) {
 				item->isFavorite = galleryStates[item->filepath].isFavorite;
 				item->folder = galleryStates[item->filepath].folder;
 			}
 
-			// 【修正】gridId を ID に含めることで、RecentとLocalのメニューを分離する
 			ImGui::PushID(gridId); 
 			ImGui::PushID(item->filepath.c_str());
 
 			ImGui::BeginGroup(); 
 			ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+			ImGui::Dummy(ImVec2(cardWidth, cardHeight));
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
 
 			drawList->AddRectFilled(cursorPos, ImVec2(cursorPos.x + cardWidth, cursorPos.y + cardHeight), IM_COL32(35, 35, 35, 255), 5.0f);
 
 			ImVec2 imgPos = ImVec2(cursorPos.x + padding, cursorPos.y + padding);
 			if (item->texture) {
-				drawList->AddImageRounded((void*)(intptr_t)item->texture->getID(), imgPos, ImVec2(imgPos.x + imageSize, imgPos.y + imageSize), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, 255), 4.0f);
+				// --- 変更ここから：アスペクト比を保った中央トリミング処理 ---
+				ImVec2 uv0 = ImVec2(0.0f, 0.0f);
+				ImVec2 uv1 = ImVec2(1.0f, 1.0f);
+				float texW = (float)item->texture->getWidth();
+				float texH = (float)item->texture->getHeight();
+				
+				if (texW > texH) {
+					// 横長画像の場合：短い方(高さ)に合わせて、左右の端を均等にクロップ
+					float offset = (texW - texH) / 2.0f;
+					uv0.x = offset / texW;
+					uv1.x = (offset + texH) / texW;
+				} else if (texH > texW) {
+					// 縦長画像の場合：短い方(幅)に合わせて、上下の端を均等にクロップ
+					float offset = (texH - texW) / 2.0f;
+					uv0.y = offset / texH;
+					uv1.y = (offset + texW) / texH;
+				}
+				
+				// 計算した切り取り範囲(uv0, uv1)を使って描画
+				drawList->AddImageRounded((void*)(intptr_t)item->texture->getID(), imgPos, ImVec2(imgPos.x + imageSize, imgPos.y + imageSize), uv0, uv1, IM_COL32(255, 255, 255, 255), 4.0f);
+				// --- 変更ここまで ---
 			} else if (defaultIcon) {
 				drawList->AddImageRounded((void*)(intptr_t)defaultIcon->getID(), imgPos, ImVec2(imgPos.x + imageSize, imgPos.y + imageSize), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, 255), 4.0f);
 			}
 
-			// --- ハートアイコン背後に薄い丸角背景を追加 ---
 			ImVec2 heartBtnPos = ImVec2(imgPos.x + 4, imgPos.y + 4);
 			drawList->AddRectFilled(heartBtnPos, ImVec2(heartBtnPos.x + 24, heartBtnPos.y + 24), IM_COL32(0, 0, 0, 120), 4.0f);
 			
@@ -209,7 +238,8 @@ namespace MikuMikuWorld
 			float valueStartX = textStartX + labelWidth + 12.0f;
 			drawList->AddLine(ImVec2(textStartX + labelWidth, textStartY), ImVec2(textStartX + labelWidth, textStartY + 7 * 16.5f), IM_COL32(80, 80, 80, 255));
 
-			const char* labels[] = { "File", "Format", "Title", "Artist", "Author", "Time", "Combo" };
+			// ここで翻訳キーを使ってラベルを表示します
+			const char* labels[] = { getString("gallery_file"), getString("gallery_format"), getString("gallery_title"), getString("gallery_artist"), getString("gallery_author"), getString("gallery_time"), getString("gallery_combo") };
 			std::string values[] = { item->filename, item->extension, item->title, item->artist, item->author, item->lengthStr, std::to_string(item->totalCombo) };
 			for (int row = 0; row < 7; ++row) {
 				float rowY = textStartY + row * 16.5f;
@@ -226,21 +256,26 @@ namespace MikuMikuWorld
 			ImVec2 titleBarEnd(imgPos.x + imageSize, bottomY + 22.0f);
 			drawList->AddRectFilled(titleBarStart, titleBarEnd, IM_COL32(45, 45, 45, 255));
 
-			// 中央揃えの計算（文字化けを防ぐため substr は使わずクリッピングで対応）
 			ImVec2 textSize = ImGui::CalcTextSize(item->title.c_str());
 			float textX = titleBarStart.x + (imageSize - textSize.x) * 0.5f;
-			if (textX < titleBarStart.x + 4.0f) textX = titleBarStart.x + 4.0f; // 左端に寄りすぎないよう制限
+			if (textX < titleBarStart.x + 4.0f) textX = titleBarStart.x + 4.0f;
 
 			drawList->PushClipRect(titleBarStart, titleBarEnd, true);
 			drawList->AddText(ImVec2(textX, titleBarStart.y + 4.0f), IM_COL32(255, 255, 255, 255), item->title.c_str());
 			drawList->PopClipRect();
 			
-			std::string tagText = std::string(ICON_FA_TAG " ") + item->folder;
+			// タグ名の表示（システムフォルダーの場合は翻訳キーを参照します）
+			std::string displayFolderName = item->folder;
+			if (displayFolderName == "Team Projects") displayFolderName = getString("gallery_team_projects");
+			else if (displayFolderName == "Personal") displayFolderName = getString("gallery_personal");
+			else if (displayFolderName == "-") displayFolderName = getString("gallery_uncategorized");
+			
+			std::string tagText = std::string(ICON_FA_TAG " ") + displayFolderName;
 			ImVec2 tagPos = ImVec2(imgPos.x + imageSize + 12.0f, bottomY + 4.0f);
 
 			float trashButtonStartX = cursorPos.x + cardWidth - padding - 24.0f;
 			ImVec2 clipMin = tagPos;
-			ImVec2 clipMax = ImVec2(trashButtonStartX - 8.0f, tagPos.y + 20.0f); // ゴミ箱の少し手前で切る
+			ImVec2 clipMax = ImVec2(trashButtonStartX - 8.0f, tagPos.y + 20.0f);
 
 			drawList->PushClipRect(clipMin, clipMax, true);
 			drawList->AddText(tagPos, IM_COL32(153, 153, 153, 255), tagText.c_str());
@@ -254,36 +289,36 @@ namespace MikuMikuWorld
 
 			ImGui::EndGroup();
 
-			// --- 変更ここから ---
-			// ポップアップ全体の余白、項目間の余白、項目自体の内側の上下余白を少し広げます
 			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 12.0f));
 			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 8.0f));
 			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4.0f, 6.0f));
 
 			if (ImGui::BeginPopupContextItem("ChartContextMenu"))
 			{
-					if (ImGui::BeginMenu("Move to Folder"))
+					if (ImGui::BeginMenu(getString("gallery_move_to_folder")))
 					{
-					// Uncategorized
-					if (ImGui::MenuItem("- (Uncategorized)", NULL, item->folder == "-")) {
+					if (ImGui::MenuItem(getString("gallery_uncategorized"), NULL, item->folder == "-")) {
 						item->folder = "-";
 						galleryStates[item->filepath].folder = "-";
 						saveGalleryData();
 					}
 					
-					// 項目間の境界線も少しゆとりを持たせたい場合は Dummy を挟むと綺麗です
 					ImGui::Dummy(ImVec2(0.0f, 2.0f));
 					ImGui::Separator();
 					ImGui::Dummy(ImVec2(0.0f, 2.0f));
 
-					// 固定フォルダとカスタムフォルダを重複なく表示
 					std::vector<std::string> displayFolders = { "Team Projects", "Personal" };
 					for (const auto& f : customFolders) {
 						if (f != "Team Projects" && f != "Personal") displayFolders.push_back(f);
 					}
 
 					for (const auto& folderName : displayFolders) {
-						if (ImGui::MenuItem(folderName.c_str(), NULL, item->folder == folderName)) {
+						// メニュー内のシステムフォルダー名を翻訳して表示
+						std::string menuDisplayName = folderName;
+						if (folderName == "Team Projects") menuDisplayName = getString("gallery_team_projects");
+						else if (folderName == "Personal") menuDisplayName = getString("gallery_personal");
+						
+						if (ImGui::MenuItem(menuDisplayName.c_str(), NULL, item->folder == folderName)) {
 							item->folder = folderName;
 							galleryStates[item->filepath].folder = folderName;
 							saveGalleryData();
@@ -294,9 +329,7 @@ namespace MikuMikuWorld
 				ImGui::EndPopup();
 			}
 
-			// スタイル変更を解除して元に戻します（3つPushしたので3を指定）
 			ImGui::PopStyleVar(3); 
-			// --- 変更ここまで ---
 
 			if (ImGui::IsItemHovered())
 				drawList->AddRectFilled(cursorPos, ImVec2(cursorPos.x + cardWidth, cursorPos.y + cardHeight), IM_COL32(255, 255, 255, 15), 5.0f);
@@ -312,8 +345,8 @@ namespace MikuMikuWorld
 				else ImGui::Dummy(ImVec2(0, 10.0f));
 			}
 
-		ImGui::PopID(); // filepath の ID
-		ImGui::PopID(); // gridId の ID
+		ImGui::PopID();
+		ImGui::PopID();
 		}
 	}
 
@@ -333,17 +366,18 @@ namespace MikuMikuWorld
 			recentLoaded = true;
 		}
 	
-		// 起動時の自動スキャン（既存のまま）
-		if (!hasAutoScanned && strlen(localSearchPath) > 0) {
+		if (!hasAutoScanned && !searchPaths.empty()) {
 			localItems.clear();
 			try {
-				std::wstring wp = IO::mbToWideStr(localSearchPath);
-				if (std::filesystem::exists(wp)) {
-					for (const auto& e : std::filesystem::recursive_directory_iterator(wp)) {
-						if (e.is_regular_file()) {
-							std::string ex = e.path().extension().string();
-							if (ex == ".mmws" || ex == ".ccmmws" || ex == ".unchmmws") 
-								localItems.push_back(loadItemInfo(IO::wideStringToMb(e.path().wstring())));
+				for (const auto& pathStr : searchPaths) {
+					std::wstring wp = IO::mbToWideStr(pathStr);
+					if (std::filesystem::exists(wp)) {
+						for (const auto& e : std::filesystem::recursive_directory_iterator(wp)) {
+							if (e.is_regular_file()) {
+								std::string ex = e.path().extension().string();
+								if (ex == ".mmws" || ex == ".ccmmws" || ex == ".unchmmws") 
+									localItems.push_back(loadItemInfo(IO::wideStringToMb(e.path().wstring())));
+							}
 						}
 					}
 				}
@@ -358,7 +392,7 @@ namespace MikuMikuWorld
 	
 		if (ImGui::Begin("GalleryScreen", &open, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove))
 		{
-			if (openDeletePopup) { ImGui::OpenPopup("Delete File"); openDeletePopup = false; }
+			if (openDeletePopup) { ImGui::OpenPopup(getString("gallery_delete_file")); openDeletePopup = false; }
 			float sharedSeparatorY = 0.0f;
 			if (ImGui::BeginTable("GalleryLayout", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV)) {
 				ImGui::TableSetupColumn("Sidebar", ImGuiTableColumnFlags_WidthFixed, 200.0f);
@@ -369,25 +403,65 @@ namespace MikuMikuWorld
 				if (ImGui::BeginChild("SidebarChild", ImVec2(0, 0), false)) {
 					ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 8);
 
-					// --- 変更ここから：上部ボタンの背景を透明にする ---
-					// ボタンの通常時の背景色を完全に透明（アルファ値 0.0f）に設定します
+					ImGui::Dummy(ImVec2(0.0f, 12.0f));
+
+					ImVec2 createBtnPos = ImGui::GetCursorScreenPos();
+					float createBtnWidth = ImGui::GetContentRegionAvail().x - 8.0f;
+					float createBtnHeight = 60.0f; 
+
+					ImGui::InvisibleButton("CreateNewChartBtn", ImVec2(createBtnWidth, createBtnHeight));
+					if (ImGui::IsItemClicked()) open = false;
+
+					bool createHovered = ImGui::IsItemHovered();
+					bool createActive = ImGui::IsItemActive();
+
+					ImDrawList* drawList = ImGui::GetWindowDrawList();
+					ImU32 createBgColor;
+					if (createActive) {
+						createBgColor = IM_COL32(50, 50, 50, 255);
+					} else if (createHovered) {
+						createBgColor = IM_COL32(85, 85, 85, 255);
+					} else {
+						createBgColor = IM_COL32(65, 65, 65, 255);
+					}
+					
+					drawList->AddRectFilled(createBtnPos, ImVec2(createBtnPos.x + createBtnWidth, createBtnPos.y + createBtnHeight), createBgColor, 4.0f);
+
+					// アプリアイコンの描画（アイコン画像自体の解像度が許せば32.0fのまま、ぼやけるなら24.0fに戻します）
+					float appIconSizeVal = 32.0f; 
+					ImVec2 appIconPos = ImVec2(createBtnPos.x + 10.0f, createBtnPos.y + (createBtnHeight - appIconSizeVal) * 0.5f);
+					if (appIcon) {
+						drawList->AddImage((void*)(intptr_t)appIcon->getID(), appIconPos, ImVec2(appIconPos.x + appIconSizeVal, appIconPos.y + appIconSizeVal));
+					}
+
+					// テキストの描画
+					const char* createText = getString("gallery_create_new_chart");
+					ImVec2 createTextSize = ImGui::CalcTextSize(createText);
+					float createTextY = createBtnPos.y + (createBtnHeight - createTextSize.y) * 0.5f;
+					float createTextX = appIconPos.x + appIconSizeVal + 12.0f; 
+					drawList->AddText(ImVec2(createTextX, createTextY), IM_COL32(240, 240, 240, 255), createText);
+
+					// 「+」アイコンの追加（標準サイズ）
+					const char* plusIcon = ICON_FA_PLUS;
+					ImVec2 plusIconSize = ImGui::CalcTextSize(plusIcon);
+					float plusIconX = createBtnPos.x + createBtnWidth - plusIconSize.x - 12.0f; 
+					float plusIconY = createBtnPos.y + (createBtnHeight - plusIconSize.y) * 0.5f; 
+					drawList->AddText(ImVec2(plusIconX, plusIconY), IM_COL32(180, 180, 180, 255), plusIcon);
+
+					ImGui::Dummy(ImVec2(0.0f, 12.0f));
+
 					ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f)); 
-					// ホバー時（マウスカーソルを乗せた時）の色を少し薄いグレーに設定します
 					ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 1.0f, 1.0f, 0.1f));
-					// クリック時（アクティブ時）の色を少し濃いグレーに設定します
 					ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.0f, 1.0f, 1.0f, 0.2f));
 
-					// フォルダー作成ボタン
 					if (ImGui::Button(ICON_FA_PLUS, ImVec2(30, 30))) {
 						isCreatingNewFolder = true;
 						memset(folderEditBuffer, 0, sizeof(folderEditBuffer));
 					}
 					ImGui::SameLine();
 	
-					// 削除ボタン
 					if (ImGui::Button(ICON_FA_TRASH, ImVec2(30, 30))) { if (activeTab >= 5) deleteFolder(activeTab); }
 					ImGui::SameLine();
-					// 編集ボタン
 					if (ImGui::Button(ICON_FA_PEN, ImVec2(30, 30))) {
 						if (activeTab >= 5) {
 							editingFolderIndex = activeTab;
@@ -396,17 +470,15 @@ namespace MikuMikuWorld
 						}
 					}
 
-					// 設定した色指定を解除して元に戻します（Pushした回数と同じ「3」を指定）
 					ImGui::PopStyleColor(3);
 
-					sharedSeparatorY = ImGui::GetCursorPosY(); // ★現在のY座標を記憶
+					sharedSeparatorY = ImGui::GetCursorPosY();
 					ImGui::Separator();
 					ImGui::Dummy(ImVec2(0.0f, 4.0f));
 	
 					auto drawSelectable = [&](const char* label, int index) {
 						bool selected = (activeTab == index);
 						if (editingFolderIndex == index) {
-							// --- 編集モード（ここはとりあえず元のまま） ---
 							ImGui::SetNextItemWidth(-8);
 							ImGui::SetKeyboardFocusHere();
 							if (ImGui::InputText("##EditFolder", folderEditBuffer, 256, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) {
@@ -423,18 +495,15 @@ namespace MikuMikuWorld
 							}
 							if (ImGui::IsItemDeactivated() && !ImGui::IsItemDeactivatedAfterEdit()) editingFolderIndex = -1;
 						} else {
-							// --- クリスタ風のカスタム描画 ---
 							ImVec2 pos = ImGui::GetCursorScreenPos();
-							float width = ImGui::GetContentRegionAvail().x - 8.0f; // 右側に少し隙間を空ける幅
-							float height = 30.0f; // ボタンの高さ
+							float width = ImGui::GetContentRegionAvail().x - 8.0f;
+							float height = 30.0f;
 
-							// 透明なボタンを配置してクリック・ホバー判定だけを吸い取る
 							ImGui::InvisibleButton(label, ImVec2(width, height));
 							if (ImGui::IsItemClicked()) activeTab = index;
 							
 							bool hovered = ImGui::IsItemHovered();
 							
-							// ダブルクリックによる名前編集判定
 							if (hovered && ImGui::IsMouseDoubleClicked(0) && index >= 5) {
 								editingFolderIndex = index;
 								std::string currentName = customFolders[index - 5];
@@ -443,23 +512,20 @@ namespace MikuMikuWorld
 
 							ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-							// 1. 背景色の決定と描画
 							ImU32 bgColor;
 							if (selected) {
-								bgColor = IM_COL32(95, 110, 135, 255); // 選択時：クリスタ風の青みがかった色
+								bgColor = ImGui::GetColorU32(ImGuiCol_SliderGrab);
 							} else if (hovered) {
-								bgColor = IM_COL32(85, 85, 85, 255);   // ホバー時：少し明るいグレー
+								bgColor = IM_COL32(85, 85, 85, 255);   
 							} else {
-								bgColor = IM_COL32(65, 65, 65, 255);   // 通常時：グレー
+								bgColor = IM_COL32(65, 65, 65, 255);   
 							}
-							// 角丸(3.0f)の矩形を描画
+
 							drawList->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + height), bgColor, 3.0f);
 
-							// 2. テキストの中央揃え描画とクリッピング
 							ImVec2 textSize = ImGui::CalcTextSize(label);
 							float textY = pos.y + (height - textSize.y) * 0.5f; 
 
-							// 右端の「＞」アイコンの少し手前までをクリップ範囲に設定
 							float arrowIconStartX = pos.x + width - 24.0f; 
 							ImVec2 textClipMin = ImVec2(pos.x + 12.0f, pos.y);
 							ImVec2 textClipMax = ImVec2(arrowIconStartX - 8.0f, pos.y + height);
@@ -468,29 +534,25 @@ namespace MikuMikuWorld
 							drawList->AddText(ImVec2(pos.x + 12.0f, textY), IM_COL32(230, 230, 230, 255), label);
 							drawList->PopClipRect();
 
-							// 3. 右端に「＞」アイコンを描画
 							const char* arrowIcon = ICON_FA_CHEVRON_RIGHT;
 							ImVec2 arrowSize = ImGui::CalcTextSize(arrowIcon);
 							float arrowX = pos.x + width - arrowSize.x - 12.0f;
 							float arrowY = pos.y + (height - arrowSize.y) * 0.5f;
 							drawList->AddText(ImVec2(arrowX, arrowY), IM_COL32(180, 180, 180, 255), arrowIcon);
 
-							// 次のアイテムとの間に隙間を空ける
 							ImGui::Dummy(ImVec2(0.0f, 4.0f)); 
 						}
 					};
 	
-					// 固定フォルダーグループ（0〜4）
-					drawSelectable("  All", 0);
-					drawSelectable("  Recent", 1);
-					drawSelectable("  Favorites", 2);
-					drawSelectable("  Team Projects", 3);
-					drawSelectable("  Personal", 4);
+					drawSelectable((std::string("  ") + getString("gallery_all")).c_str(), 0);
+					drawSelectable((std::string("  ") + getString("gallery_recent")).c_str(), 1);
+					drawSelectable((std::string("  ") + getString("gallery_favorites")).c_str(), 2);
+					drawSelectable((std::string("  ") + getString("gallery_team_projects")).c_str(), 3);
+					drawSelectable((std::string("  ") + getString("gallery_personal")).c_str(), 4);
 	
-					ImGui::Separator(); // システムとユーザーを分ける
+					ImGui::Separator(); 
 					ImGui::Dummy(ImVec2(0.0f, 4.0f));
 
-					// カスタムフォルダー
 					for (int i = 0; i < (int)customFolders.size(); ++i) {
 						drawSelectable((std::string("  ") + customFolders[i]).c_str(), 5 + i);
 					}
@@ -504,9 +566,6 @@ namespace MikuMikuWorld
 						}
 						if (ImGui::IsItemDeactivated() && !ImGui::IsItemDeactivatedAfterEdit()) isCreatingNewFolder = false;
 					}
-					
-					ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 50);
-					if (ImGui::Button("Create New Chart", ImVec2(-8, 40))) open = false;
 				}
 				ImGui::EndChild();
 
@@ -525,22 +584,17 @@ namespace MikuMikuWorld
 						bool hasMore = (activeTab == 0 && recentToDraw.size() > 4);
 						if (hasMore) recentToDraw.resize(4);
 
-						ImGui::SetCursorPosY(sharedSeparatorY - ImGui::GetTextLineHeight() - 6.0f);
-						ImGui::Text("Recent Charts");
-
-						// セパレータの位置はそのまま左側と完全に合わせる
-						ImGui::SetCursorPosY(sharedSeparatorY);
+						ImGui::Spacing(); 
+						ImGui::Text("%s", getString("gallery_recent_charts"));
 						ImGui::Separator();
-
-						ImGui::Dummy(ImVec2(0.0f, 10.0f)); // セパレータ下の余白
+						ImGui::Spacing();
 
 						drawGrid(recentToDraw, "RecentGrid");
-
 
 						if (hasMore) {
 							ImGui::SameLine(0, 16.0f);
 							ImGui::BeginGroup();
-							float moreWidth = 100.0f; // 幅をスリムに
+							float moreWidth = 100.0f;
 							float moreHeight = 165.0f;
 							ImVec2 pos = ImGui::GetCursorScreenPos();
 							ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -549,7 +603,7 @@ namespace MikuMikuWorld
 							if (ImGui::IsItemHovered()) dl->AddRectFilled(pos, ImVec2(pos.x + moreWidth, pos.y + moreHeight), IM_COL32(255, 255, 255, 20), 5.0f);
 							
 							const char* iconTxt = ICON_FA_ARROW_RIGHT;
-							const char* moreTxt = "More";
+							const char* moreTxt = getString("gallery_more");
 							ImVec2 iconSize = ImGui::CalcTextSize(iconTxt);
 							ImVec2 textSize = ImGui::CalcTextSize(moreTxt);
 							float centerX = pos.x + (moreWidth / 2.0f);
@@ -558,21 +612,39 @@ namespace MikuMikuWorld
 							ImGui::EndGroup();
 						}
 					}
+					
+					if (activeTab == 0)
+				{
+					ImGui::Dummy(ImVec2(0.0f, 20.0f));
+					ImGui::Text("%s", getString("gallery_all_charts"));
+					ImGui::Separator();
+					ImGui::Spacing();
 
-					if (activeTab == 0) {
-						ImGui::Dummy(ImVec2(0.0f, 20.0f));
-						ImGui::Text("All Charts in PC"); ImGui::Separator(); ImGui::Spacing();
-						ImGui::Text("Add chart folder path:");
-						ImGui::SetNextItemWidth(400.0f);
-						ImGui::InputText("##Path", localSearchPath, sizeof(localSearchPath));
-						ImGui::SameLine();
+					// 1. パス一覧を開閉するボタン
+					std::string toggleBtnText = isSearchPathsOpen ? (std::string(ICON_FA_CHEVRON_DOWN) + " " + getString("gallery_hide_search_paths")) : (std::string(ICON_FA_CHEVRON_RIGHT) + " " + getString("gallery_show_search_paths"));
+					if (ImGui::Button(toggleBtnText.c_str()))
+					{
+						isSearchPathsOpen = !isSearchPathsOpen;
+					}
 
-						if (ImGui::Button("Start Scan"))
-						{
-							localItems.clear();
-							saveGalleryData(); // パスを保存
-							try {
-								std::wstring wp = IO::mbToWideStr(localSearchPath);
+					// 2. スキャン開始ボタン
+					ImGui::SameLine();
+
+					ImVec4 accentColor = ImGui::GetStyle().Colors[ImGuiCol_SliderGrab];
+					ImVec4 accentHovered = accentColor; accentHovered.w = 0.8f;
+					ImVec4 accentActive = ImGui::GetStyle().Colors[ImGuiCol_SliderGrabActive];
+
+					ImGui::PushStyleColor(ImGuiCol_Button, accentColor);
+					ImGui::PushStyleColor(ImGuiCol_ButtonHovered, accentHovered);
+					ImGui::PushStyleColor(ImGuiCol_ButtonActive, accentActive);
+
+					if (ImGui::Button(getString("gallery_start_scan")))
+					{
+						localItems.clear();
+						saveGalleryData();
+						try {
+							for (const auto& pathStr : searchPaths) {
+								std::wstring wp = IO::mbToWideStr(pathStr);
 								if (std::filesystem::exists(wp)) {
 									for (const auto& e : std::filesystem::recursive_directory_iterator(wp)) {
 										if (e.is_regular_file()) {
@@ -581,11 +653,116 @@ namespace MikuMikuWorld
 										}
 									}
 								}
-							} catch (...) {}
-						}
-						ImGui::Spacing();
-						drawGrid(localItems, "LocalGrid");
+							}
+						} catch (...) {}
 					}
+					ImGui::PopStyleColor(3); 
+
+					// 3. 検索・ソートUI（スキャンボタンのすぐ横に配置するため、ここでSameLineを呼ぶ）
+					ImGui::SameLine();
+
+					float totalWidth = 250.0f + 150.0f + 12.0f; 
+					ImGui::SetCursorPosX(ImGui::GetWindowWidth() - totalWidth - 16.0f); 
+
+					ImGui::TextDisabled(ICON_FA_SEARCH); 
+					float iconWidth = ImGui::CalcTextSize(ICON_FA_SEARCH).x;
+					float searchBoxWidth = 250.0f;
+
+					ImGui::SetNextItemWidth(searchBoxWidth - iconWidth - 8.0f);
+					ImGui::SameLine(); 
+					ImGui::InputText("##SearchBox", searchQuery, sizeof(searchQuery));
+
+					ImGui::SameLine(); 
+
+					const char* sortOptions[] = { getString("gallery_title"), getString("gallery_artist"), getString("gallery_author"), getString("gallery_combo") };
+					ImGui::SetNextItemWidth(150.0f);
+					ImGui::Combo("##SortBox", &currentSortMethod, sortOptions, 4);
+
+					ImGui::Spacing(); 
+
+					// 4. パス一覧の表示（横並びのツールバーの処理が全て終わった後、下に描画する）
+					if (isSearchPathsOpen) {
+						ImGui::Dummy(ImVec2(0.0f, 4.0f));
+						ImGui::Indent();
+
+						int pathToDeleteIndex = -1;
+
+						for (int pIdx = 0; pIdx < (int)searchPaths.size(); ++pIdx) {
+							ImGui::PushID(pIdx);
+							ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+							
+							if (ImGui::Button(ICON_FA_TRASH)) {
+								pathToDeleteIndex = pIdx; 
+							}
+							
+							ImGui::PopStyleColor();
+							ImGui::SameLine();
+							ImGui::Text("%s", searchPaths[pIdx].c_str()); 
+							ImGui::PopID();
+						}
+
+						if (pathToDeleteIndex != -1) {
+							searchPaths.erase(searchPaths.begin() + pathToDeleteIndex);
+							saveGalleryData();
+						}
+
+						ImGui::Dummy(ImVec2(0.0f, 4.0f));
+
+						ImGui::Text("%s", getString("gallery_add_path"));
+						ImGui::SetNextItemWidth(400.0f);
+						ImGui::InputText("##NewPath", newPathBuffer, sizeof(newPathBuffer));
+						ImGui::SameLine();
+						if (ImGui::Button(ICON_FA_PLUS))
+						{
+							if (strlen(newPathBuffer) > 0)
+							{
+								searchPaths.push_back(newPathBuffer);
+								memset(newPathBuffer, 0, sizeof(newPathBuffer));
+								saveGalleryData();
+							}
+						}
+						ImGui::Unindent();
+						ImGui::Dummy(ImVec2(0.0f, 8.0f));
+					}
+
+					// 5. フィルタリング・ソートロジックとグリッドの描画
+					auto toLowerAscii = [](std::string s) {
+						for (char& c : s) {
+							if (c >= 'A' && c <= 'Z') c += ('a' - 'A');
+						}
+						return s;
+					};
+
+					std::vector<std::shared_ptr<GalleryItem>> displayItems;
+					std::string query = toLowerAscii(searchQuery);
+
+					for (const auto& item : localItems) {
+						if (query.empty()) {
+							displayItems.push_back(item);
+							continue;
+						}
+						
+						std::string titleLower = toLowerAscii(item->title);
+						std::string artistLower = toLowerAscii(item->artist);
+						std::string filenameLower = toLowerAscii(item->filename);
+
+						if (titleLower.find(query) != std::string::npos ||
+							artistLower.find(query) != std::string::npos ||
+							filenameLower.find(query) != std::string::npos) {
+							displayItems.push_back(item);
+						}
+					}
+
+					std::sort(displayItems.begin(), displayItems.end(), [&](const std::shared_ptr<GalleryItem>& a, const std::shared_ptr<GalleryItem>& b) {
+						if (currentSortMethod == 0) return a->title < b->title;          
+						if (currentSortMethod == 1) return a->artist < b->artist;        
+						if (currentSortMethod == 2) return a->author < b->author;        
+						if (currentSortMethod == 3) return a->totalCombo > b->totalCombo;
+						return false;
+					});
+
+					drawGrid(displayItems, "LocalGrid");
+				}
 
 					if (activeTab == 2) {
 						std::vector<std::shared_ptr<GalleryItem>> favs;
@@ -593,7 +770,7 @@ namespace MikuMikuWorld
 						for (auto& it : localItems) if (it->isFavorite) {
 							if (std::find_if(favs.begin(), favs.end(), [&](auto& f){return f->filepath == it->filepath;}) == favs.end()) favs.push_back(it);
 						}
-						ImGui::Spacing(); ImGui::Text("Favorites"); ImGui::Separator(); ImGui::Spacing();
+						ImGui::Spacing(); ImGui::Text("%s", getString("gallery_favorites")); ImGui::Separator(); ImGui::Spacing();
 						drawGrid(favs, "FavoritesGrid");
 					}
 
@@ -603,94 +780,87 @@ namespace MikuMikuWorld
 						for (auto& it : localItems) if (it->folder == filterFolder) {
 							if (std::find_if(fItems.begin(), fItems.end(), [&](auto& f){return f->filepath == it->filepath;}) == fItems.end()) fItems.push_back(it);
 						}
-						ImGui::Spacing(); ImGui::Text(filterFolder.c_str()); ImGui::Separator(); ImGui::Spacing();
+						
+						// ヘッダーのシステムフォルダー名を翻訳して表示
+						std::string displayFilter = filterFolder;
+						if (filterFolder == "Team Projects") displayFilter = getString("gallery_team_projects");
+						else if (filterFolder == "Personal") displayFilter = getString("gallery_personal");
+						
+						ImGui::Spacing(); ImGui::Text("%s", displayFilter.c_str()); ImGui::Separator(); ImGui::Spacing();
 						drawGrid(fItems, "CustomGrid");
 					}
+					ImGui::Dummy(ImVec2(0.0f, 24.0f));
 				}
 				ImGui::EndChild();
 				ImGui::PopStyleVar();
 				ImGui::EndTable();
 			}
 
-			if (ImGui::BeginPopupModal("Delete File", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-				// 削除対象のファイルパスから情報を取得
+			if (ImGui::BeginPopupModal(getString("gallery_delete_file"), NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
 				std::filesystem::path p = IO::mbToWideStr(itemToDelete);
 				std::string filename = "";
 				std::string dirStr = "";
-				std::string extStr = ""; // --- 拡張子用の変数を追加 ---
+				std::string extStr = ""; 
 				uintmax_t fileSize = 0;
 
 				try {
 					if (std::filesystem::exists(p)) {
 						filename = IO::wideStringToMb(p.filename().wstring());
 						dirStr = IO::wideStringToMb(p.parent_path().wstring());
-						fileSize = std::filesystem::file_size(p) / 1024; // バイトをKBに変換
+						fileSize = std::filesystem::file_size(p) / 1024; 
 
-						// --- 追加ここから：拡張子を取得して大文字に変換 ---
 						extStr = p.extension().string();
 						if (!extStr.empty() && extStr[0] == '.') {
-							extStr = extStr.substr(1); // 先頭のピリオドを取り除く
+							extStr = extStr.substr(1); 
 						}
-						// 小文字を大文字に変換 (例: ccmmws -> CCMMWS)
 						std::transform(extStr.begin(), extStr.end(), extStr.begin(), ::toupper);
-						// --- 追加ここまで ---
 					}
 				} catch (...) {}
 
-				// --- 左側：アイコンエリア ---
 				ImGui::BeginGroup();
 				if (appIcon) {
-					// 読み込んだアプリアイコンを描画 (サイズは48x48としています)
 					ImGui::Image((void*)(intptr_t)appIcon->getID(), ImVec2(48.0f, 48.0f));
 				} else {
-					// 万が一アイコンが読み込めなかった場合の予備
 					ImGui::SetWindowFontScale(3.0f);
 					ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), ICON_FA_FILE);
 					ImGui::SetWindowFontScale(1.0f);
 				}
 				ImGui::EndGroup();
 
-				ImGui::SameLine(0, 15.0f); // アイコンとテキストの間の隙間
+				ImGui::SameLine(0, 15.0f); 
 
-				// --- 右側：テキストエリア ---
 				ImGui::BeginGroup();
-				ImGui::Text("Are you sure you want to permanently delete this file?");
-				ImGui::Dummy(ImVec2(0.0f, 10.0f)); // 少し隙間を空ける
+				ImGui::Text("%s", getString("gallery_delete_confirm"));
+				ImGui::Dummy(ImVec2(0.0f, 10.0f)); 
 
-				// ファイル詳細情報
 				ImGui::Text("%s", filename.c_str());
 
-				// --- 変更ここから：固定文字から動的変数へ置き換え ---
 				if (!extStr.empty()) {
-					ImGui::TextDisabled("Type: %s File", extStr.c_str());
+					ImGui::TextDisabled(getString("gallery_type_file"), extStr.c_str());
 				} else {
-					ImGui::TextDisabled("Type: Unknown File");
+					ImGui::TextDisabled("%s", getString("gallery_type_unknown"));
 				}
-				// --- 変更ここまで ---
 
-				ImGui::TextDisabled("Size: %llu KB", fileSize);
+				ImGui::TextDisabled(getString("gallery_size_kb"), fileSize);
 				
-				// パスが長い場合を考慮して折り返しを有効化
 				ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + 350.0f);
-				ImGui::TextDisabled("Original Location: %s", dirStr.c_str());
+				ImGui::TextDisabled(getString("gallery_original_location"), dirStr.c_str());
 				ImGui::PopTextWrapPos();
 
 				ImGui::EndGroup();
 
-				ImGui::Dummy(ImVec2(0.0f, 20.0f)); // ボタン群の上の隙間
+				ImGui::Dummy(ImVec2(0.0f, 20.0f)); 
 
-				// --- 下部：ボタンエリア (右寄せ) ---
 				float btnWidth = 100.0f;
 				float spacing = ImGui::GetStyle().ItemSpacing.x;
-				// 右端から「ボタン2つ分の幅＋ボタン間の隙間」を引いた位置へカーソルを移動
 				ImGui::SetCursorPosX(ImGui::GetWindowWidth() - (btnWidth * 2 + spacing) - 10.0f);
 
-				if (ImGui::Button("Yes(Y)", ImVec2(btnWidth, 0))) {
+				if (ImGui::Button(getString("gallery_yes_y"), ImVec2(btnWidth, 0))) {
 					try { std::filesystem::remove(p); removeDeletedItemFromLists(itemToDelete); } catch (...) {}
 					ImGui::CloseCurrentPopup();
 				}
 				ImGui::SameLine();
-				if (ImGui::Button("No(N)", ImVec2(btnWidth, 0))) {
+				if (ImGui::Button(getString("gallery_no_n"), ImVec2(btnWidth, 0))) {
 					ImGui::CloseCurrentPopup();
 				}
 
