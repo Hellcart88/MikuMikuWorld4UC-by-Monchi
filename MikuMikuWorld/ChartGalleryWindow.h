@@ -58,6 +58,10 @@ namespace MikuMikuWorld
 		int editingFolderIndex = -1; // -1: Not editing, 3+: Custom folders
 		char folderEditBuffer[256] = "";
 
+		void drawSidebar();
+		void drawMainContent();
+		void drawDeletePopup();
+
 		void loadGalleryData();
 		void saveGalleryData();
 		std::shared_ptr<GalleryItem> loadItemInfo(const std::string& filepath);
@@ -68,6 +72,7 @@ namespace MikuMikuWorld
 	public:
 		bool open = true;
 		std::string pendingLoadScore = ""; 
+		bool pendingCreateNew = false;
 
 		void update(const std::vector<std::string>& recentFiles);
 	};

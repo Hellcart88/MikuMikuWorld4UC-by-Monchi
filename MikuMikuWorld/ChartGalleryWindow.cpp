@@ -39,17 +39,17 @@ namespace MikuMikuWorld
 						customFolders.push_back(folder.get<std::string>());
 					}
 				}
-				// --- 変更ここから：複数パスの読み込み ---
 				if (j.contains("searchPaths")) {
 					searchPaths.clear();
 					for (auto& p : j["searchPaths"]) {
 						searchPaths.push_back(p.get<std::string>());
 					}
 				} else if (j.contains("searchPath")) {
-					// 古いバージョンの単一パスデータとの互換性
 					searchPaths.push_back(j["searchPath"].get<std::string>());
 				}
-				// --- 変更ここまで ---
+				if (j.contains("isSearchPathsOpen")) {
+					isSearchPathsOpen = j["isSearchPathsOpen"].get<bool>();
+				}
 			} catch (...) {}
 		}
 	}
@@ -66,9 +66,8 @@ namespace MikuMikuWorld
 			}
 		}
 		j["folders"] = customFolders;
-		// --- 変更ここから：複数パスの保存 ---
 		j["searchPaths"] = searchPaths;
-		// --- 変更ここまで ---
+		j["isSearchPathsOpen"] = isSearchPathsOpen;
 		std::string path = Application::getAppDir() + "gallery.json";
 		std::ofstream file(IO::mbToWideStr(path));
 		if (file.is_open()) {
@@ -393,480 +392,504 @@ namespace MikuMikuWorld
 		if (ImGui::Begin("GalleryScreen", &open, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove))
 		{
 			if (openDeletePopup) { ImGui::OpenPopup(getString("gallery_delete_file")); openDeletePopup = false; }
-			float sharedSeparatorY = 0.0f;
+			
 			if (ImGui::BeginTable("GalleryLayout", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV)) {
 				ImGui::TableSetupColumn("Sidebar", ImGuiTableColumnFlags_WidthFixed, 200.0f);
 				ImGui::TableSetupColumn("Main", ImGuiTableColumnFlags_WidthStretch);
 				ImGui::TableNextRow();
 	
 				ImGui::TableSetColumnIndex(0);
-				if (ImGui::BeginChild("SidebarChild", ImVec2(0, 0), false)) {
-					ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 8);
-
-					ImGui::Dummy(ImVec2(0.0f, 12.0f));
-
-					ImVec2 createBtnPos = ImGui::GetCursorScreenPos();
-					float createBtnWidth = ImGui::GetContentRegionAvail().x - 8.0f;
-					float createBtnHeight = 60.0f; 
-
-					ImGui::InvisibleButton("CreateNewChartBtn", ImVec2(createBtnWidth, createBtnHeight));
-					if (ImGui::IsItemClicked()) open = false;
-
-					bool createHovered = ImGui::IsItemHovered();
-					bool createActive = ImGui::IsItemActive();
-
-					ImDrawList* drawList = ImGui::GetWindowDrawList();
-					ImU32 createBgColor;
-					if (createActive) {
-						createBgColor = IM_COL32(50, 50, 50, 255);
-					} else if (createHovered) {
-						createBgColor = IM_COL32(85, 85, 85, 255);
-					} else {
-						createBgColor = IM_COL32(65, 65, 65, 255);
-					}
-					
-					drawList->AddRectFilled(createBtnPos, ImVec2(createBtnPos.x + createBtnWidth, createBtnPos.y + createBtnHeight), createBgColor, 4.0f);
-
-					// アプリアイコンの描画（アイコン画像自体の解像度が許せば32.0fのまま、ぼやけるなら24.0fに戻します）
-					float appIconSizeVal = 32.0f; 
-					ImVec2 appIconPos = ImVec2(createBtnPos.x + 10.0f, createBtnPos.y + (createBtnHeight - appIconSizeVal) * 0.5f);
-					if (appIcon) {
-						drawList->AddImage((void*)(intptr_t)appIcon->getID(), appIconPos, ImVec2(appIconPos.x + appIconSizeVal, appIconPos.y + appIconSizeVal));
-					}
-
-					// テキストの描画
-					const char* createText = getString("gallery_create_new_chart");
-					ImVec2 createTextSize = ImGui::CalcTextSize(createText);
-					float createTextY = createBtnPos.y + (createBtnHeight - createTextSize.y) * 0.5f;
-					float createTextX = appIconPos.x + appIconSizeVal + 12.0f; 
-					drawList->AddText(ImVec2(createTextX, createTextY), IM_COL32(240, 240, 240, 255), createText);
-
-					// 「+」アイコンの追加（標準サイズ）
-					const char* plusIcon = ICON_FA_PLUS;
-					ImVec2 plusIconSize = ImGui::CalcTextSize(plusIcon);
-					float plusIconX = createBtnPos.x + createBtnWidth - plusIconSize.x - 12.0f; 
-					float plusIconY = createBtnPos.y + (createBtnHeight - plusIconSize.y) * 0.5f; 
-					drawList->AddText(ImVec2(plusIconX, plusIconY), IM_COL32(180, 180, 180, 255), plusIcon);
-
-					ImGui::Dummy(ImVec2(0.0f, 12.0f));
-
-					ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f)); 
-					ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 1.0f, 1.0f, 0.1f));
-					ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.0f, 1.0f, 1.0f, 0.2f));
-
-					if (ImGui::Button(ICON_FA_PLUS, ImVec2(30, 30))) {
-						isCreatingNewFolder = true;
-						memset(folderEditBuffer, 0, sizeof(folderEditBuffer));
-					}
-					ImGui::SameLine();
+				drawSidebar(); // 切り出した関数を呼び出す
 	
-					if (ImGui::Button(ICON_FA_TRASH, ImVec2(30, 30))) { if (activeTab >= 5) deleteFolder(activeTab); }
-					ImGui::SameLine();
-					if (ImGui::Button(ICON_FA_PEN, ImVec2(30, 30))) {
-						if (activeTab >= 5) {
-							editingFolderIndex = activeTab;
-							std::string currentName = customFolders[activeTab - 5];
-							strncpy(folderEditBuffer, currentName.c_str(), 256);
-						}
-					}
-
-					ImGui::PopStyleColor(3);
-
-					sharedSeparatorY = ImGui::GetCursorPosY();
-					ImGui::Separator();
-					ImGui::Dummy(ImVec2(0.0f, 4.0f));
-	
-					auto drawSelectable = [&](const char* label, int index) {
-						bool selected = (activeTab == index);
-						if (editingFolderIndex == index) {
-							ImGui::SetNextItemWidth(-8);
-							ImGui::SetKeyboardFocusHere();
-							if (ImGui::InputText("##EditFolder", folderEditBuffer, 256, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) {
-								std::string oldName = customFolders[index - 5];
-								std::string newName = folderEditBuffer;
-								if (!newName.empty()) {
-									customFolders[index - 5] = newName;
-									for (auto& [path, state] : galleryStates) if (state.folder == oldName) state.folder = newName;
-									for (auto& item : recentItems) if (item->folder == oldName) item->folder = newName;
-									for (auto& item : localItems) if (item->folder == oldName) item->folder = newName;
-									saveGalleryData();
-								}
-								editingFolderIndex = -1;
-							}
-							if (ImGui::IsItemDeactivated() && !ImGui::IsItemDeactivatedAfterEdit()) editingFolderIndex = -1;
-						} else {
-							ImVec2 pos = ImGui::GetCursorScreenPos();
-							float width = ImGui::GetContentRegionAvail().x - 8.0f;
-							float height = 30.0f;
-
-							ImGui::InvisibleButton(label, ImVec2(width, height));
-							if (ImGui::IsItemClicked()) activeTab = index;
-							
-							bool hovered = ImGui::IsItemHovered();
-							
-							if (hovered && ImGui::IsMouseDoubleClicked(0) && index >= 5) {
-								editingFolderIndex = index;
-								std::string currentName = customFolders[index - 5];
-								strncpy(folderEditBuffer, currentName.c_str(), 256);
-							}
-
-							ImDrawList* drawList = ImGui::GetWindowDrawList();
-
-							ImU32 bgColor;
-							if (selected) {
-								bgColor = ImGui::GetColorU32(ImGuiCol_SliderGrab);
-							} else if (hovered) {
-								bgColor = IM_COL32(85, 85, 85, 255);   
-							} else {
-								bgColor = IM_COL32(65, 65, 65, 255);   
-							}
-
-							drawList->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + height), bgColor, 3.0f);
-
-							ImVec2 textSize = ImGui::CalcTextSize(label);
-							float textY = pos.y + (height - textSize.y) * 0.5f; 
-
-							float arrowIconStartX = pos.x + width - 24.0f; 
-							ImVec2 textClipMin = ImVec2(pos.x + 12.0f, pos.y);
-							ImVec2 textClipMax = ImVec2(arrowIconStartX - 8.0f, pos.y + height);
-
-							drawList->PushClipRect(textClipMin, textClipMax, true);
-							drawList->AddText(ImVec2(pos.x + 12.0f, textY), IM_COL32(230, 230, 230, 255), label);
-							drawList->PopClipRect();
-
-							const char* arrowIcon = ICON_FA_CHEVRON_RIGHT;
-							ImVec2 arrowSize = ImGui::CalcTextSize(arrowIcon);
-							float arrowX = pos.x + width - arrowSize.x - 12.0f;
-							float arrowY = pos.y + (height - arrowSize.y) * 0.5f;
-							drawList->AddText(ImVec2(arrowX, arrowY), IM_COL32(180, 180, 180, 255), arrowIcon);
-
-							ImGui::Dummy(ImVec2(0.0f, 4.0f)); 
-						}
-					};
-	
-					drawSelectable((std::string("  ") + getString("gallery_all")).c_str(), 0);
-					drawSelectable((std::string("  ") + getString("gallery_recent")).c_str(), 1);
-					drawSelectable((std::string("  ") + getString("gallery_favorites")).c_str(), 2);
-					drawSelectable((std::string("  ") + getString("gallery_team_projects")).c_str(), 3);
-					drawSelectable((std::string("  ") + getString("gallery_personal")).c_str(), 4);
-	
-					ImGui::Separator(); 
-					ImGui::Dummy(ImVec2(0.0f, 4.0f));
-
-					for (int i = 0; i < (int)customFolders.size(); ++i) {
-						drawSelectable((std::string("  ") + customFolders[i]).c_str(), 5 + i);
-					}
-	
-					if (isCreatingNewFolder) {
-						ImGui::SetNextItemWidth(-8);
-						ImGui::SetKeyboardFocusHere();
-						if (ImGui::InputText("##NewFolder", folderEditBuffer, 256, ImGuiInputTextFlags_EnterReturnsTrue)) {
-							if (strlen(folderEditBuffer) > 0) { customFolders.push_back(folderEditBuffer); saveGalleryData(); }
-							isCreatingNewFolder = false;
-						}
-						if (ImGui::IsItemDeactivated() && !ImGui::IsItemDeactivatedAfterEdit()) isCreatingNewFolder = false;
-					}
-				}
-				ImGui::EndChild();
-
 				ImGui::TableSetColumnIndex(1);
-
-				ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(24.0f, 0.0f));
-
-				if (ImGui::BeginChild("MainContentChild", ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysUseWindowPadding)) {
-					std::string filterFolder = "";
-					if (activeTab == 3) filterFolder = "Team Projects";
-					else if (activeTab == 4) filterFolder = "Personal";
-					else if (activeTab >= 5 && (activeTab - 5) < (int)customFolders.size()) filterFolder = customFolders[activeTab - 5];
-
-					if (activeTab == 0 || activeTab == 1) {
-						std::vector<std::shared_ptr<GalleryItem>> recentToDraw = recentItems;
-						bool hasMore = (activeTab == 0 && recentToDraw.size() > 4);
-						if (hasMore) recentToDraw.resize(4);
-
-						ImGui::Spacing(); 
-						ImGui::Text("%s", getString("gallery_recent_charts"));
-						ImGui::Separator();
-						ImGui::Spacing();
-
-						drawGrid(recentToDraw, "RecentGrid");
-
-						if (hasMore) {
-							ImGui::SameLine(0, 16.0f);
-							ImGui::BeginGroup();
-							float moreWidth = 100.0f;
-							float moreHeight = 165.0f;
-							ImVec2 pos = ImGui::GetCursorScreenPos();
-							ImDrawList* dl = ImGui::GetWindowDrawList();
-							dl->AddRectFilled(pos, ImVec2(pos.x + moreWidth, pos.y + moreHeight), IM_COL32(50, 50, 50, 255), 5.0f);
-							if (ImGui::InvisibleButton("ShowMoreBtn", ImVec2(moreWidth, moreHeight))) activeTab = 1;
-							if (ImGui::IsItemHovered()) dl->AddRectFilled(pos, ImVec2(pos.x + moreWidth, pos.y + moreHeight), IM_COL32(255, 255, 255, 20), 5.0f);
-							
-							const char* iconTxt = ICON_FA_ARROW_RIGHT;
-							const char* moreTxt = getString("gallery_more");
-							ImVec2 iconSize = ImGui::CalcTextSize(iconTxt);
-							ImVec2 textSize = ImGui::CalcTextSize(moreTxt);
-							float centerX = pos.x + (moreWidth / 2.0f);
-							dl->AddText(ImVec2(centerX - iconSize.x / 2.0f, pos.y + (moreHeight / 2.0f) - 15), IM_COL32(200, 200, 200, 255), iconTxt);
-							dl->AddText(ImVec2(centerX - textSize.x / 2.0f, pos.y + (moreHeight / 2.0f) + 5), IM_COL32(200, 200, 200, 255), moreTxt);
-							ImGui::EndGroup();
-						}
-					}
-					
-					if (activeTab == 0)
-				{
-					ImGui::Dummy(ImVec2(0.0f, 20.0f));
-					ImGui::Text("%s", getString("gallery_all_charts"));
-					ImGui::Separator();
-					ImGui::Spacing();
-
-					// 1. パス一覧を開閉するボタン
-					std::string toggleBtnText = isSearchPathsOpen ? (std::string(ICON_FA_CHEVRON_DOWN) + " " + getString("gallery_hide_search_paths")) : (std::string(ICON_FA_CHEVRON_RIGHT) + " " + getString("gallery_show_search_paths"));
-					if (ImGui::Button(toggleBtnText.c_str()))
-					{
-						isSearchPathsOpen = !isSearchPathsOpen;
-					}
-
-					// 2. スキャン開始ボタン
-					ImGui::SameLine();
-
-					ImVec4 accentColor = ImGui::GetStyle().Colors[ImGuiCol_SliderGrab];
-					ImVec4 accentHovered = accentColor; accentHovered.w = 0.8f;
-					ImVec4 accentActive = ImGui::GetStyle().Colors[ImGuiCol_SliderGrabActive];
-
-					ImGui::PushStyleColor(ImGuiCol_Button, accentColor);
-					ImGui::PushStyleColor(ImGuiCol_ButtonHovered, accentHovered);
-					ImGui::PushStyleColor(ImGuiCol_ButtonActive, accentActive);
-
-					if (ImGui::Button(getString("gallery_start_scan")))
-					{
-						localItems.clear();
-						saveGalleryData();
-						try {
-							for (const auto& pathStr : searchPaths) {
-								std::wstring wp = IO::mbToWideStr(pathStr);
-								if (std::filesystem::exists(wp)) {
-									for (const auto& e : std::filesystem::recursive_directory_iterator(wp)) {
-										if (e.is_regular_file()) {
-											std::string ex = e.path().extension().string();
-											if (ex == ".mmws" || ex == ".ccmmws" || ex == ".unchmmws") localItems.push_back(loadItemInfo(IO::wideStringToMb(e.path().wstring())));
-										}
-									}
-								}
-							}
-						} catch (...) {}
-					}
-					ImGui::PopStyleColor(3); 
-
-					// 3. 検索・ソートUI（スキャンボタンのすぐ横に配置するため、ここでSameLineを呼ぶ）
-					ImGui::SameLine();
-
-					float totalWidth = 250.0f + 150.0f + 12.0f; 
-					ImGui::SetCursorPosX(ImGui::GetWindowWidth() - totalWidth - 16.0f); 
-
-					ImGui::TextDisabled(ICON_FA_SEARCH); 
-					float iconWidth = ImGui::CalcTextSize(ICON_FA_SEARCH).x;
-					float searchBoxWidth = 250.0f;
-
-					ImGui::SetNextItemWidth(searchBoxWidth - iconWidth - 8.0f);
-					ImGui::SameLine(); 
-					ImGui::InputText("##SearchBox", searchQuery, sizeof(searchQuery));
-
-					ImGui::SameLine(); 
-
-					const char* sortOptions[] = { getString("gallery_title"), getString("gallery_artist"), getString("gallery_author"), getString("gallery_combo") };
-					ImGui::SetNextItemWidth(150.0f);
-					ImGui::Combo("##SortBox", &currentSortMethod, sortOptions, 4);
-
-					ImGui::Spacing(); 
-
-					// 4. パス一覧の表示（横並びのツールバーの処理が全て終わった後、下に描画する）
-					if (isSearchPathsOpen) {
-						ImGui::Dummy(ImVec2(0.0f, 4.0f));
-						ImGui::Indent();
-
-						int pathToDeleteIndex = -1;
-
-						for (int pIdx = 0; pIdx < (int)searchPaths.size(); ++pIdx) {
-							ImGui::PushID(pIdx);
-							ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-							
-							if (ImGui::Button(ICON_FA_TRASH)) {
-								pathToDeleteIndex = pIdx; 
-							}
-							
-							ImGui::PopStyleColor();
-							ImGui::SameLine();
-							ImGui::Text("%s", searchPaths[pIdx].c_str()); 
-							ImGui::PopID();
-						}
-
-						if (pathToDeleteIndex != -1) {
-							searchPaths.erase(searchPaths.begin() + pathToDeleteIndex);
-							saveGalleryData();
-						}
-
-						ImGui::Dummy(ImVec2(0.0f, 4.0f));
-
-						ImGui::Text("%s", getString("gallery_add_path"));
-						ImGui::SetNextItemWidth(400.0f);
-						ImGui::InputText("##NewPath", newPathBuffer, sizeof(newPathBuffer));
-						ImGui::SameLine();
-						if (ImGui::Button(ICON_FA_PLUS))
-						{
-							if (strlen(newPathBuffer) > 0)
-							{
-								searchPaths.push_back(newPathBuffer);
-								memset(newPathBuffer, 0, sizeof(newPathBuffer));
-								saveGalleryData();
-							}
-						}
-						ImGui::Unindent();
-						ImGui::Dummy(ImVec2(0.0f, 8.0f));
-					}
-
-					// 5. フィルタリング・ソートロジックとグリッドの描画
-					auto toLowerAscii = [](std::string s) {
-						for (char& c : s) {
-							if (c >= 'A' && c <= 'Z') c += ('a' - 'A');
-						}
-						return s;
-					};
-
-					std::vector<std::shared_ptr<GalleryItem>> displayItems;
-					std::string query = toLowerAscii(searchQuery);
-
-					for (const auto& item : localItems) {
-						if (query.empty()) {
-							displayItems.push_back(item);
-							continue;
-						}
-						
-						std::string titleLower = toLowerAscii(item->title);
-						std::string artistLower = toLowerAscii(item->artist);
-						std::string filenameLower = toLowerAscii(item->filename);
-
-						if (titleLower.find(query) != std::string::npos ||
-							artistLower.find(query) != std::string::npos ||
-							filenameLower.find(query) != std::string::npos) {
-							displayItems.push_back(item);
-						}
-					}
-
-					std::sort(displayItems.begin(), displayItems.end(), [&](const std::shared_ptr<GalleryItem>& a, const std::shared_ptr<GalleryItem>& b) {
-						if (currentSortMethod == 0) return a->title < b->title;          
-						if (currentSortMethod == 1) return a->artist < b->artist;        
-						if (currentSortMethod == 2) return a->author < b->author;        
-						if (currentSortMethod == 3) return a->totalCombo > b->totalCombo;
-						return false;
-					});
-
-					drawGrid(displayItems, "LocalGrid");
-				}
-
-					if (activeTab == 2) {
-						std::vector<std::shared_ptr<GalleryItem>> favs;
-						for (auto& it : recentItems) if (it->isFavorite) favs.push_back(it);
-						for (auto& it : localItems) if (it->isFavorite) {
-							if (std::find_if(favs.begin(), favs.end(), [&](auto& f){return f->filepath == it->filepath;}) == favs.end()) favs.push_back(it);
-						}
-						ImGui::Spacing(); ImGui::Text("%s", getString("gallery_favorites")); ImGui::Separator(); ImGui::Spacing();
-						drawGrid(favs, "FavoritesGrid");
-					}
-
-					if (activeTab >= 3) {
-						std::vector<std::shared_ptr<GalleryItem>> fItems;
-						for (auto& it : recentItems) if (it->folder == filterFolder) fItems.push_back(it);
-						for (auto& it : localItems) if (it->folder == filterFolder) {
-							if (std::find_if(fItems.begin(), fItems.end(), [&](auto& f){return f->filepath == it->filepath;}) == fItems.end()) fItems.push_back(it);
-						}
-						
-						// ヘッダーのシステムフォルダー名を翻訳して表示
-						std::string displayFilter = filterFolder;
-						if (filterFolder == "Team Projects") displayFilter = getString("gallery_team_projects");
-						else if (filterFolder == "Personal") displayFilter = getString("gallery_personal");
-						
-						ImGui::Spacing(); ImGui::Text("%s", displayFilter.c_str()); ImGui::Separator(); ImGui::Spacing();
-						drawGrid(fItems, "CustomGrid");
-					}
-					ImGui::Dummy(ImVec2(0.0f, 24.0f));
-				}
-				ImGui::EndChild();
-				ImGui::PopStyleVar();
+				drawMainContent(); // 切り出した関数を呼び出す
+	
 				ImGui::EndTable();
 			}
-
-			if (ImGui::BeginPopupModal(getString("gallery_delete_file"), NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-				std::filesystem::path p = IO::mbToWideStr(itemToDelete);
-				std::string filename = "";
-				std::string dirStr = "";
-				std::string extStr = ""; 
-				uintmax_t fileSize = 0;
-
-				try {
-					if (std::filesystem::exists(p)) {
-						filename = IO::wideStringToMb(p.filename().wstring());
-						dirStr = IO::wideStringToMb(p.parent_path().wstring());
-						fileSize = std::filesystem::file_size(p) / 1024; 
-
-						extStr = p.extension().string();
-						if (!extStr.empty() && extStr[0] == '.') {
-							extStr = extStr.substr(1); 
-						}
-						std::transform(extStr.begin(), extStr.end(), extStr.begin(), ::toupper);
-					}
-				} catch (...) {}
-
-				ImGui::BeginGroup();
-				if (appIcon) {
-					ImGui::Image((void*)(intptr_t)appIcon->getID(), ImVec2(48.0f, 48.0f));
-				} else {
-					ImGui::SetWindowFontScale(3.0f);
-					ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), ICON_FA_FILE);
-					ImGui::SetWindowFontScale(1.0f);
-				}
-				ImGui::EndGroup();
-
-				ImGui::SameLine(0, 15.0f); 
-
-				ImGui::BeginGroup();
-				ImGui::Text("%s", getString("gallery_delete_confirm"));
-				ImGui::Dummy(ImVec2(0.0f, 10.0f)); 
-
-				ImGui::Text("%s", filename.c_str());
-
-				if (!extStr.empty()) {
-					ImGui::TextDisabled(getString("gallery_type_file"), extStr.c_str());
-				} else {
-					ImGui::TextDisabled("%s", getString("gallery_type_unknown"));
-				}
-
-				ImGui::TextDisabled(getString("gallery_size_kb"), fileSize);
-				
-				ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + 350.0f);
-				ImGui::TextDisabled(getString("gallery_original_location"), dirStr.c_str());
-				ImGui::PopTextWrapPos();
-
-				ImGui::EndGroup();
-
-				ImGui::Dummy(ImVec2(0.0f, 20.0f)); 
-
-				float btnWidth = 100.0f;
-				float spacing = ImGui::GetStyle().ItemSpacing.x;
-				ImGui::SetCursorPosX(ImGui::GetWindowWidth() - (btnWidth * 2 + spacing) - 10.0f);
-
-				if (ImGui::Button(getString("gallery_yes_y"), ImVec2(btnWidth, 0))) {
-					try { std::filesystem::remove(p); removeDeletedItemFromLists(itemToDelete); } catch (...) {}
-					ImGui::CloseCurrentPopup();
-				}
-				ImGui::SameLine();
-				if (ImGui::Button(getString("gallery_no_n"), ImVec2(btnWidth, 0))) {
-					ImGui::CloseCurrentPopup();
-				}
-
-				ImGui::EndPopup();
-			}
+	
+			drawDeletePopup(); // 切り出した関数を呼び出す
 		}
 		ImGui::End();
 	}
+
+	void ChartGalleryWindow::drawSidebar()
+	{
+		if (ImGui::BeginChild("SidebarChild", ImVec2(0, 0), false)) {
+			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 8);
+	
+		ImGui::Dummy(ImVec2(0.0f, 12.0f));
+
+		// ボタンを描画して、クリックされたら true を返す共通処理
+		auto drawLargeSidebarButton = [&](const char* id, const char* text, Texture* iconTex, const char* leftIconStr, const char* rightIconStr) -> bool {
+			ImVec2 btnPos = ImGui::GetCursorScreenPos();
+			float btnWidth = ImGui::GetContentRegionAvail().x - 8.0f;
+			float btnHeight = 60.0f;
+
+			ImGui::InvisibleButton(id, ImVec2(btnWidth, btnHeight));
+			bool clicked = ImGui::IsItemClicked();
+
+			bool hovered = ImGui::IsItemHovered();
+			bool active = ImGui::IsItemActive();
+
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+			ImU32 bgColor = active ? IM_COL32(50, 50, 50, 255) : (hovered ? IM_COL32(85, 85, 85, 255) : IM_COL32(65, 65, 65, 255));
+			drawList->AddRectFilled(btnPos, ImVec2(btnPos.x + btnWidth, btnPos.y + btnHeight), bgColor, 4.0f);
+
+			float iconSizeVal = 32.0f;
+			float textStartX = btnPos.x + 12.0f;
+
+			// アプリアイコン または FontAwesomeアイコンを左に描画
+			if (iconTex) {
+				ImVec2 iconPos = ImVec2(btnPos.x + 10.0f, btnPos.y + (btnHeight - iconSizeVal) * 0.5f);
+				drawList->AddImage((void*)(intptr_t)iconTex->getID(), iconPos, ImVec2(iconPos.x + iconSizeVal, iconPos.y + iconSizeVal));
+				textStartX = iconPos.x + iconSizeVal + 12.0f;
+			} else if (leftIconStr) {
+				ImVec2 leftIconSize = ImGui::CalcTextSize(leftIconStr);
+				ImVec2 iconPos = ImVec2(btnPos.x + 16.0f, btnPos.y + (btnHeight - leftIconSize.y) * 0.5f);
+				drawList->AddText(iconPos, IM_COL32(200, 200, 200, 255), leftIconStr);
+				textStartX = iconPos.x + leftIconSize.x + 16.0f;
+			}
+
+			// テキストを描画
+			ImVec2 textSize = ImGui::CalcTextSize(text);
+			float textY = btnPos.y + (btnHeight - textSize.y) * 0.5f;
+			drawList->AddText(ImVec2(textStartX, textY), IM_COL32(240, 240, 240, 255), text);
+
+			// 右端のアイコン（+マークなど）を描画
+			if (rightIconStr) {
+				ImVec2 rightIconSize = ImGui::CalcTextSize(rightIconStr);
+				float rightIconX = btnPos.x + btnWidth - rightIconSize.x - 12.0f;
+				float rightIconY = btnPos.y + (btnHeight - rightIconSize.y) * 0.5f;
+				drawList->AddText(ImVec2(rightIconX, rightIconY), IM_COL32(180, 180, 180, 255), rightIconStr);
+			}
+
+			return clicked;
+		};
+
+		if (drawLargeSidebarButton("CreateNewChartBtn", getString("gallery_create_new_chart"), appIcon.get(), nullptr, ICON_FA_PLUS)) {
+			pendingCreateNew = true; // 新規作成フラグを立てる
+			open = false;            // ギャラリーを閉じる
+		}
+
+		ImGui::Dummy(ImVec2(0.0f, 8.0f));
+
+		if (drawLargeSidebarButton("ReturnToEditorBtn", getString("gallery_return_to_editor"), nullptr, ICON_FA_ARROW_LEFT, nullptr)) {
+			open = false; // ギャラリーを閉じるだけ（現在の譜面を維持）
+		}
+
+			ImGui::Dummy(ImVec2(0.0f, 12.0f));
+	
+			ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f)); 
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 1.0f, 1.0f, 0.1f));
+			ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.0f, 1.0f, 1.0f, 0.2f));
+	
+			if (ImGui::Button(ICON_FA_PLUS, ImVec2(30, 30))) {
+				isCreatingNewFolder = true;
+				memset(folderEditBuffer, 0, sizeof(folderEditBuffer));
+			}
+			ImGui::SameLine();
+	
+			if (ImGui::Button(ICON_FA_TRASH, ImVec2(30, 30))) { if (activeTab >= 5) deleteFolder(activeTab); }
+			ImGui::SameLine();
+			if (ImGui::Button(ICON_FA_PEN, ImVec2(30, 30))) {
+				if (activeTab >= 5) {
+					editingFolderIndex = activeTab;
+					std::string currentName = customFolders[activeTab - 5];
+					strncpy(folderEditBuffer, currentName.c_str(), 256);
+				}
+			}
+	
+			ImGui::PopStyleColor(3);
+	
+			ImGui::Separator();
+			ImGui::Dummy(ImVec2(0.0f, 4.0f));
+	
+			auto drawSelectable = [&](const char* label, int index) {
+				bool selected = (activeTab == index);
+				if (editingFolderIndex == index) {
+					ImGui::SetNextItemWidth(-8);
+					ImGui::SetKeyboardFocusHere();
+					if (ImGui::InputText("##EditFolder", folderEditBuffer, 256, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) {
+						std::string oldName = customFolders[index - 5];
+						std::string newName = folderEditBuffer;
+						if (!newName.empty()) {
+							customFolders[index - 5] = newName;
+							for (auto& [path, state] : galleryStates) if (state.folder == oldName) state.folder = newName;
+							for (auto& item : recentItems) if (item->folder == oldName) item->folder = newName;
+							for (auto& item : localItems) if (item->folder == oldName) item->folder = newName;
+							saveGalleryData();
+						}
+						editingFolderIndex = -1;
+					}
+					if (ImGui::IsItemDeactivated() && !ImGui::IsItemDeactivatedAfterEdit()) editingFolderIndex = -1;
+				} else {
+					ImVec2 pos = ImGui::GetCursorScreenPos();
+					float width = ImGui::GetContentRegionAvail().x - 8.0f;
+					float height = 30.0f;
+	
+					ImGui::InvisibleButton(label, ImVec2(width, height));
+					if (ImGui::IsItemClicked()) activeTab = index;
+					
+					bool hovered = ImGui::IsItemHovered();
+					
+					if (hovered && ImGui::IsMouseDoubleClicked(0) && index >= 5) {
+						editingFolderIndex = index;
+						std::string currentName = customFolders[index - 5];
+						strncpy(folderEditBuffer, currentName.c_str(), 256);
+					}
+	
+					ImDrawList* drawList = ImGui::GetWindowDrawList();
+	
+					ImU32 bgColor;
+					if (selected) {
+						bgColor = ImGui::GetColorU32(ImGuiCol_SliderGrab);
+					} else if (hovered) {
+						bgColor = IM_COL32(85, 85, 85, 255);   
+					} else {
+						bgColor = IM_COL32(65, 65, 65, 255);   
+					}
+	
+					drawList->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + height), bgColor, 3.0f);
+	
+					ImVec2 textSize = ImGui::CalcTextSize(label);
+					float textY = pos.y + (height - textSize.y) * 0.5f; 
+	
+					float arrowIconStartX = pos.x + width - 24.0f; 
+					ImVec2 textClipMin = ImVec2(pos.x + 12.0f, pos.y);
+					ImVec2 textClipMax = ImVec2(arrowIconStartX - 8.0f, pos.y + height);
+	
+					drawList->PushClipRect(textClipMin, textClipMax, true);
+					drawList->AddText(ImVec2(pos.x + 12.0f, textY), IM_COL32(230, 230, 230, 255), label);
+					drawList->PopClipRect();
+	
+					const char* arrowIcon = ICON_FA_CHEVRON_RIGHT;
+					ImVec2 arrowSize = ImGui::CalcTextSize(arrowIcon);
+					float arrowX = pos.x + width - arrowSize.x - 12.0f;
+					float arrowY = pos.y + (height - arrowSize.y) * 0.5f;
+					drawList->AddText(ImVec2(arrowX, arrowY), IM_COL32(180, 180, 180, 255), arrowIcon);
+	
+					ImGui::Dummy(ImVec2(0.0f, 4.0f)); 
+				}
+			};
+	
+			drawSelectable((std::string("  ") + getString("gallery_all")).c_str(), 0);
+			drawSelectable((std::string("  ") + getString("gallery_recent")).c_str(), 1);
+			drawSelectable((std::string("  ") + getString("gallery_favorites")).c_str(), 2);
+			drawSelectable((std::string("  ") + getString("gallery_team_projects")).c_str(), 3);
+			drawSelectable((std::string("  ") + getString("gallery_personal")).c_str(), 4);
+	
+			ImGui::Separator(); 
+			ImGui::Dummy(ImVec2(0.0f, 4.0f));
+	
+			for (int i = 0; i < (int)customFolders.size(); ++i) {
+				drawSelectable((std::string("  ") + customFolders[i]).c_str(), 5 + i);
+			}
+	
+			if (isCreatingNewFolder) {
+				ImGui::SetNextItemWidth(-8);
+				ImGui::SetKeyboardFocusHere();
+				if (ImGui::InputText("##NewFolder", folderEditBuffer, 256, ImGuiInputTextFlags_EnterReturnsTrue)) {
+					if (strlen(folderEditBuffer) > 0) { customFolders.push_back(folderEditBuffer); saveGalleryData(); }
+					isCreatingNewFolder = false;
+				}
+				if (ImGui::IsItemDeactivated() && !ImGui::IsItemDeactivatedAfterEdit()) isCreatingNewFolder = false;
+			}
+		}
+		ImGui::EndChild();
+	}
+
+	void ChartGalleryWindow::drawMainContent()
+{
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(24.0f, 0.0f));
+
+	if (ImGui::BeginChild("MainContentChild", ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysUseWindowPadding)) {
+		std::string filterFolder = "";
+		if (activeTab == 3) filterFolder = "Team Projects";
+		else if (activeTab == 4) filterFolder = "Personal";
+		else if (activeTab >= 5 && (activeTab - 5) < (int)customFolders.size()) filterFolder = customFolders[activeTab - 5];
+
+		if (activeTab == 0 || activeTab == 1) {
+			std::vector<std::shared_ptr<GalleryItem>> recentToDraw = recentItems;
+			bool hasMore = (activeTab == 0 && recentToDraw.size() > 4);
+			if (hasMore) recentToDraw.resize(4);
+
+			ImGui::Spacing(); 
+			ImGui::Text("%s", getString("gallery_recent_charts"));
+			ImGui::Separator();
+			ImGui::Spacing();
+
+			drawGrid(recentToDraw, "RecentGrid");
+
+			if (hasMore) {
+				ImGui::SameLine(0, 16.0f);
+				ImGui::BeginGroup();
+				float moreWidth = 100.0f;
+				float moreHeight = 165.0f;
+				ImVec2 pos = ImGui::GetCursorScreenPos();
+				ImDrawList* dl = ImGui::GetWindowDrawList();
+				dl->AddRectFilled(pos, ImVec2(pos.x + moreWidth, pos.y + moreHeight), IM_COL32(50, 50, 50, 255), 5.0f);
+				if (ImGui::InvisibleButton("ShowMoreBtn", ImVec2(moreWidth, moreHeight))) activeTab = 1;
+				if (ImGui::IsItemHovered()) dl->AddRectFilled(pos, ImVec2(pos.x + moreWidth, pos.y + moreHeight), IM_COL32(255, 255, 255, 20), 5.0f);
+				
+				const char* iconTxt = ICON_FA_ARROW_RIGHT;
+				const char* moreTxt = getString("gallery_more");
+				ImVec2 iconSize = ImGui::CalcTextSize(iconTxt);
+				ImVec2 textSize = ImGui::CalcTextSize(moreTxt);
+				float centerX = pos.x + (moreWidth / 2.0f);
+				dl->AddText(ImVec2(centerX - iconSize.x / 2.0f, pos.y + (moreHeight / 2.0f) - 15), IM_COL32(200, 200, 200, 255), iconTxt);
+				dl->AddText(ImVec2(centerX - textSize.x / 2.0f, pos.y + (moreHeight / 2.0f) + 5), IM_COL32(200, 200, 200, 255), moreTxt);
+				ImGui::EndGroup();
+			}
+		}
+		
+		if (activeTab == 0)
+		{
+			ImGui::Dummy(ImVec2(0.0f, 20.0f));
+			ImGui::Text("%s", getString("gallery_all_charts"));
+			ImGui::Separator();
+			ImGui::Spacing();
+
+			std::string toggleBtnText = isSearchPathsOpen ? (std::string(ICON_FA_CHEVRON_DOWN) + " " + getString("gallery_hide_search_paths")) : (std::string(ICON_FA_CHEVRON_RIGHT) + " " + getString("gallery_show_search_paths"));
+			if (ImGui::Button(toggleBtnText.c_str()))
+			{
+				isSearchPathsOpen = !isSearchPathsOpen;
+				saveGalleryData();
+			}
+
+			ImGui::SameLine();
+
+			ImVec4 accentColor = ImGui::GetStyle().Colors[ImGuiCol_SliderGrab];
+			ImVec4 accentHovered = accentColor; accentHovered.w = 0.8f; 
+			ImVec4 accentActive = ImGui::GetStyle().Colors[ImGuiCol_SliderGrabActive]; 
+
+			ImGui::PushStyleColor(ImGuiCol_Button, accentColor);
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, accentHovered);
+			ImGui::PushStyleColor(ImGuiCol_ButtonActive, accentActive);
+
+			if (ImGui::Button(getString("gallery_start_scan")))
+			{
+				localItems.clear();
+				saveGalleryData();
+				try {
+					for (const auto& pathStr : searchPaths) {
+						std::wstring wp = IO::mbToWideStr(pathStr);
+						if (std::filesystem::exists(wp)) {
+							for (const auto& e : std::filesystem::recursive_directory_iterator(wp)) {
+								if (e.is_regular_file()) {
+									std::string ex = e.path().extension().string();
+									if (ex == ".mmws" || ex == ".ccmmws" || ex == ".unchmmws") localItems.push_back(loadItemInfo(IO::wideStringToMb(e.path().wstring())));
+								}
+							}
+						}
+					}
+				} catch (...) {}
+			}
+			ImGui::PopStyleColor(3); 
+
+			ImGui::SameLine();
+
+			float totalWidth = 250.0f + 150.0f + 12.0f; 
+			ImGui::SetCursorPosX(ImGui::GetWindowWidth() - totalWidth - 16.0f); 
+
+			ImGui::TextDisabled(ICON_FA_SEARCH); 
+			float iconWidth = ImGui::CalcTextSize(ICON_FA_SEARCH).x;
+			float searchBoxWidth = 250.0f;
+
+			ImGui::SetNextItemWidth(searchBoxWidth - iconWidth - 8.0f);
+			ImGui::SameLine(); 
+			ImGui::InputText("##SearchBox", searchQuery, sizeof(searchQuery));
+
+			ImGui::SameLine(); 
+
+			const char* sortOptions[] = { getString("gallery_title"), getString("gallery_artist"), getString("gallery_author"), getString("gallery_combo") };
+			ImGui::SetNextItemWidth(150.0f); 
+			ImGui::Combo("##SortBox", &currentSortMethod, sortOptions, 4);
+
+			ImGui::Spacing(); 
+
+			if (isSearchPathsOpen) {
+				ImGui::Dummy(ImVec2(0.0f, 4.0f));
+				ImGui::Indent();
+
+				int pathToDeleteIndex = -1;
+
+				for (int pIdx = 0; pIdx < (int)searchPaths.size(); ++pIdx) {
+					ImGui::PushID(pIdx);
+					ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+					
+					if (ImGui::Button(ICON_FA_TRASH)) {
+						pathToDeleteIndex = pIdx; 
+					}
+					
+					ImGui::PopStyleColor();
+					ImGui::SameLine();
+					ImGui::Text("%s", searchPaths[pIdx].c_str()); 
+					ImGui::PopID();
+				}
+
+				if (pathToDeleteIndex != -1) {
+					searchPaths.erase(searchPaths.begin() + pathToDeleteIndex);
+					saveGalleryData();
+				}
+
+				ImGui::Dummy(ImVec2(0.0f, 4.0f));
+
+				ImGui::Text("%s", getString("gallery_add_path"));
+				ImGui::SetNextItemWidth(400.0f);
+				ImGui::InputText("##NewPath", newPathBuffer, sizeof(newPathBuffer));
+				ImGui::SameLine();
+				if (ImGui::Button(ICON_FA_PLUS))
+				{
+					if (strlen(newPathBuffer) > 0)
+					{
+						searchPaths.push_back(newPathBuffer);
+						memset(newPathBuffer, 0, sizeof(newPathBuffer));
+						saveGalleryData();
+					}
+				}
+				ImGui::Unindent();
+				ImGui::Dummy(ImVec2(0.0f, 8.0f));
+			}
+
+			auto toLowerAscii = [](std::string s) {
+				for (char& c : s) {
+					if (c >= 'A' && c <= 'Z') c += ('a' - 'A');
+				}
+				return s;
+			};
+
+			std::vector<std::shared_ptr<GalleryItem>> displayItems;
+			std::string query = toLowerAscii(searchQuery);
+
+			for (const auto& item : localItems) {
+				if (query.empty()) {
+					displayItems.push_back(item);
+					continue;
+				}
+				
+				std::string titleLower = toLowerAscii(item->title);
+				std::string artistLower = toLowerAscii(item->artist);
+				std::string filenameLower = toLowerAscii(item->filename);
+
+				if (titleLower.find(query) != std::string::npos ||
+					artistLower.find(query) != std::string::npos ||
+					filenameLower.find(query) != std::string::npos) {
+					displayItems.push_back(item);
+				}
+			}
+
+			std::sort(displayItems.begin(), displayItems.end(), [&](const std::shared_ptr<GalleryItem>& a, const std::shared_ptr<GalleryItem>& b) {
+				if (currentSortMethod == 0) return a->title < b->title;          
+				if (currentSortMethod == 1) return a->artist < b->artist;        
+				if (currentSortMethod == 2) return a->author < b->author;        
+				if (currentSortMethod == 3) return a->totalCombo > b->totalCombo;
+				return false;
+			});
+
+			drawGrid(displayItems, "LocalGrid");
+		}
+
+		if (activeTab == 2) {
+			std::vector<std::shared_ptr<GalleryItem>> favs;
+			for (auto& it : recentItems) if (it->isFavorite) favs.push_back(it);
+			for (auto& it : localItems) if (it->isFavorite) {
+				if (std::find_if(favs.begin(), favs.end(), [&](auto& f){return f->filepath == it->filepath;}) == favs.end()) favs.push_back(it);
+			}
+			ImGui::Spacing(); ImGui::Text("%s", getString("gallery_favorites")); ImGui::Separator(); ImGui::Spacing();
+			drawGrid(favs, "FavoritesGrid");
+		}
+
+		if (activeTab >= 3) {
+			std::vector<std::shared_ptr<GalleryItem>> fItems;
+			for (auto& it : recentItems) if (it->folder == filterFolder) fItems.push_back(it);
+			for (auto& it : localItems) if (it->folder == filterFolder) {
+				if (std::find_if(fItems.begin(), fItems.end(), [&](auto& f){return f->filepath == it->filepath;}) == fItems.end()) fItems.push_back(it);
+			}
+			
+			std::string displayFilter = filterFolder;
+			if (filterFolder == "Team Projects") displayFilter = getString("gallery_team_projects");
+			else if (filterFolder == "Personal") displayFilter = getString("gallery_personal");
+			
+			ImGui::Spacing(); ImGui::Text("%s", displayFilter.c_str()); ImGui::Separator(); ImGui::Spacing();
+			drawGrid(fItems, "CustomGrid");
+		}
+		ImGui::Dummy(ImVec2(0.0f, 24.0f));
+	}
+	ImGui::EndChild();
+	ImGui::PopStyleVar();
+}
+
+	void ChartGalleryWindow::drawDeletePopup()
+{
+	if (ImGui::BeginPopupModal(getString("gallery_delete_file"), NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+		std::filesystem::path p = IO::mbToWideStr(itemToDelete);
+		std::string filename = "";
+		std::string dirStr = "";
+		std::string extStr = ""; 
+		uintmax_t fileSize = 0;
+
+		try {
+			if (std::filesystem::exists(p)) {
+				filename = IO::wideStringToMb(p.filename().wstring());
+				dirStr = IO::wideStringToMb(p.parent_path().wstring());
+				fileSize = std::filesystem::file_size(p) / 1024; 
+
+				extStr = p.extension().string();
+				if (!extStr.empty() && extStr[0] == '.') {
+					extStr = extStr.substr(1); 
+				}
+				std::transform(extStr.begin(), extStr.end(), extStr.begin(), ::toupper);
+			}
+		} catch (...) {}
+
+		ImGui::BeginGroup();
+		if (appIcon) {
+			ImGui::Image((void*)(intptr_t)appIcon->getID(), ImVec2(48.0f, 48.0f));
+		} else {
+			ImGui::SetWindowFontScale(3.0f);
+			ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), ICON_FA_FILE);
+			ImGui::SetWindowFontScale(1.0f);
+		}
+		ImGui::EndGroup();
+
+		ImGui::SameLine(0, 15.0f); 
+
+		ImGui::BeginGroup();
+		ImGui::Text("%s", getString("gallery_delete_confirm"));
+		ImGui::Dummy(ImVec2(0.0f, 10.0f)); 
+
+		ImGui::Text("%s", filename.c_str());
+
+		if (!extStr.empty()) {
+			ImGui::TextDisabled(getString("gallery_type_file"), extStr.c_str());
+		} else {
+			ImGui::TextDisabled("%s", getString("gallery_type_unknown"));
+		}
+
+		ImGui::TextDisabled(getString("gallery_size_kb"), fileSize);
+		
+		ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + 350.0f);
+		ImGui::TextDisabled(getString("gallery_original_location"), dirStr.c_str());
+		ImGui::PopTextWrapPos();
+
+		ImGui::EndGroup();
+
+		ImGui::Dummy(ImVec2(0.0f, 20.0f)); 
+
+		float btnWidth = 100.0f;
+		float spacing = ImGui::GetStyle().ItemSpacing.x;
+		ImGui::SetCursorPosX(ImGui::GetWindowWidth() - (btnWidth * 2 + spacing) - 10.0f);
+
+		if (ImGui::Button(getString("gallery_yes_y"), ImVec2(btnWidth, 0))) {
+			try { std::filesystem::remove(p); removeDeletedItemFromLists(itemToDelete); } catch (...) {}
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button(getString("gallery_no_n"), ImVec2(btnWidth, 0))) {
+			ImGui::CloseCurrentPopup();
+		}
+
+		ImGui::EndPopup();
+	}
+}
 }

@@ -170,6 +170,11 @@ namespace MikuMikuWorld
 		// ＝＝＝ 新しいギャラリークラスの呼び出し ＝＝＝
 		galleryWindow.update(config.recentFiles);
 
+		if (galleryWindow.pendingCreateNew) {
+			Application::windowState.resetting = true; // 譜面を完全にリセットする命令
+			galleryWindow.pendingCreateNew = false;
+		}
+
 		// ギャラリー側で譜面が選択されたら、エディタ本体で読み込む
 		if (!galleryWindow.pendingLoadScore.empty()) {
 			loadScore(galleryWindow.pendingLoadScore);
@@ -552,7 +557,10 @@ namespace MikuMikuWorld
 				Application::windowState.resetting = true;
 				Application::windowState.shouldPickScore = true;
 			}
-
+			if (ImGui::MenuItem(getString("file_open_gallery")))
+			{
+				galleryWindow.open = true;
+			}
 			if (ImGui::BeginMenu(getString("open_recent")))
 			{
 				for (size_t index = 0; index < config.recentFiles.size(); index++)

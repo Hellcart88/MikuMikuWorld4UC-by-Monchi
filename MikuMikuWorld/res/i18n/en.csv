@@ -10,6 +10,7 @@ new,New
 open,Open
 open_recent,Open Recent
 clear,Clear
+file_open_gallery,Open Gallery
 save,Save
 save_as,Save As
 export_score,Export Score
@@ -360,3 +361,6 @@ gallery_yes_y,Yes
 gallery_no_n,No
 gallery_show_search_paths,Show Paths
 gallery_hide_search_paths,Hide Paths
+gallery_search,Search
+gallery_sort,Sort
+gallery_return_to_editor,Return to Editor
