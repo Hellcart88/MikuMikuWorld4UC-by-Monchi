@@ -114,6 +114,8 @@ namespace MikuMikuWorld
 		bool followCursorInPlayback;
 		bool drawWaveform;
 		bool showTickInProperties;
+		bool drawHiSpeedAutomation;
+		float hiSpeedGraphLimit;
 		bool autoSaveEnabled;
 		int autoSaveInterval;
 		int autoSaveMaxCount;

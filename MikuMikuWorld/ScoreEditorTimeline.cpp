@@ -1,4 +1,4 @@
-#include "ScoreEditorTimeline.h"
+﻿#include "ScoreEditorTimeline.h"
 #include "Application.h"
 #include "ApplicationConfiguration.h"
 #include "Colors.h"
@@ -535,8 +535,22 @@ namespace MikuMikuWorld
 			for (const auto& [id, hsc] : context.score.hiSpeedChanges)
 			{
 				float dpiScale = ImGui::GetMainViewport()->DpiScale;
-				float lx = getTimelineEndX(context) + 123 * dpiScale;
-				float rx = getTimelineEndX(context) + 180 * dpiScale;
+
+				// getTimelineEndX() にはウィンドウの絶対座標(position.x)が含まれてしまっているため、
+				// 引き算をしてタイムライン内での「相対X座標」に変換します。
+				float relativeEndX = getTimelineEndX(context) - position.x;
+				
+				float lx, rx;
+				if (config.drawHiSpeedAutomation) {
+					// グラフ表示（オートメーション）オンの場合の判定エリア
+					lx = relativeEndX + 10.0f * dpiScale;
+					rx = lx + 100.0f * dpiScale;
+				} else {
+					// 従来のテキスト表示（レガシー）の場合の判定エリア
+					lx = relativeEndX + 123.0f * dpiScale;
+					rx = relativeEndX + 180.0f * dpiScale;
+				}
+
 				float y = -tickToPosition(hsc.tick);
 
 				if (right > lx && left < rx &&
@@ -704,23 +718,32 @@ namespace MikuMikuWorld
 		drawList->AddLine(ImVec2(exX1, y), ImVec2(exX2, y), cursorColor,
 		                  primaryLineThickness + 1.0f);
 
+		// HSレーン上での右クリックメニュー抑制はいったんWIPとして保留
 		contextMenu(context);
+		if (config.drawHiSpeedAutomation) {
+			// WIP 
+			// HSレーン上での右クリックメニュー抑制
+			drawHiSpeedGraph(context);
+		}
 
-		// Update hi-speed changes
-		for (auto& [id, hiSpeed] : context.score.hiSpeedChanges)
+		else
 		{
-			if (context.score.layers[hiSpeed.layer].hidden &&
-			    context.selectedLayer != hiSpeed.layer)
-				continue;
-			if (hiSpeedControl(context, hiSpeed))
+			// 設定がオフの場合は従来のテキスト表示（レガシー）を描画
+			for (auto& [id, hiSpeed] : context.score.hiSpeedChanges)
 			{
-				eventEdit.editId = id;
-				eventEdit.editHiSpeed = hiSpeed.speed;
-				eventEdit.editHiSpeedEase = hiSpeed.ease;
-				eventEdit.editHiSpeedSkip = hiSpeed.skips;
-				eventEdit.editHiSpeedHideNote = hiSpeed.hideNotes;
-				eventEdit.type = EventType::HiSpeed;
-				ImGui::OpenPopup("edit_event");
+				if (context.score.layers[hiSpeed.layer].hidden &&
+				    context.selectedLayer != hiSpeed.layer)
+					continue;
+				if (hiSpeedControl(context, hiSpeed))
+				{
+					eventEdit.editId = id;
+					eventEdit.editHiSpeed = hiSpeed.speed;
+					eventEdit.editHiSpeedEase = hiSpeed.ease;
+					eventEdit.editHiSpeedSkip = hiSpeed.skips;
+					eventEdit.editHiSpeedHideNote = hiSpeed.hideNotes;
+					eventEdit.type = EventType::HiSpeed;
+					ImGui::OpenPopup("edit_event");
+				}
 			}
 		}
 
@@ -880,8 +903,8 @@ namespace MikuMikuWorld
 		if (UI::inlineSelect(getString("snap_mode"), snapModeInt, snapModes,
 		                     (size_t)SnapMode::SnapModeMax))
 		{
-			snapMode = (SnapMode)snapModeInt;
-		}
+		snapMode = (SnapMode)snapModeInt;
+	}
 
 		static int gotoMeasure = 0;
 		bool activated = false;
@@ -2535,23 +2558,23 @@ namespace MikuMikuWorld
 		return bpmControl(context, tempo.bpm, tempo.tick, !playing);
 	}
 
-	bool ScoreEditorTimeline::bpmControl(const ScoreContext& context, float bpm, int tick,
-	                                     bool enabled)
+	bool ScoreEditorTimeline::bpmControl(const ScoreContext& context, float bpm, int tick, bool enabled)
 	{
 		float dpiScale = ImGui::GetMainViewport()->DpiScale;
-		Vector2 pos{ getTimelineEndX(context) + (15 * dpiScale),
+		// タイムラインの左端（StartX）から左へ110pxの位置に配置
+		Vector2 pos{ getTimelineStartX(context) - (110.0f * dpiScale),
 			         position.y - tickToPosition(tick) + visualOffset };
-		return eventControl(getTimelineEndX(context), pos, tempoColor,
+		return eventControl(getTimelineStartX(context), pos, tempoColor,
 		                    IO::formatString("%g BPM", bpm).c_str(), enabled);
 	}
 
-	bool ScoreEditorTimeline::timeSignatureControl(const ScoreContext& context, int numerator,
-	                                               int denominator, int tick, bool enabled)
+	bool ScoreEditorTimeline::timeSignatureControl(const ScoreContext& context, int numerator, int denominator, int tick, bool enabled)
 	{
 		float dpiScale = ImGui::GetMainViewport()->DpiScale;
-		Vector2 pos{ getTimelineEndX(context) + (78 * dpiScale),
+		// タイムラインの左端（StartX）から左へ45pxの位置に配置
+		Vector2 pos{ getTimelineStartX(context) - (45.0f * dpiScale),
 			         position.y - tickToPosition(tick) + visualOffset };
-		return eventControl(getTimelineEndX(context), pos, timeColor,
+		return eventControl(getTimelineStartX(context), pos, timeColor,
 		                    IO::formatString("%d/%d", numerator, denominator).c_str(), enabled);
 	}
 
@@ -2575,8 +2598,7 @@ namespace MikuMikuWorld
 		       feverControl(context, fever.endTick, false, !playing);
 	}
 
-	bool ScoreEditorTimeline::feverControl(const ScoreContext& context, int tick, bool start,
-	                                       bool enabled)
+	bool ScoreEditorTimeline::feverControl(const ScoreContext& context, int tick, bool start, bool enabled)
 	{
 		if (tick < 0)
 			return false;
@@ -2590,8 +2612,7 @@ namespace MikuMikuWorld
 		return eventControl(getTimelineStartX(context), pos, feverColor, txt.c_str(), enabled);
 	}
 
-	bool ScoreEditorTimeline::hiSpeedControl(const ScoreContext& context,
-	                                         const HiSpeedChange& hiSpeed)
+	bool ScoreEditorTimeline::hiSpeedControl(const ScoreContext& context, const HiSpeedChange& hiSpeed)
 	{
 		return hiSpeedControl(context, hiSpeed.tick, hiSpeed.speed, hiSpeed.layer, hiSpeed.skips,
 		                      hiSpeed.ease, hiSpeed.hideNotes,
@@ -2599,9 +2620,7 @@ namespace MikuMikuWorld
 		                          context.selectedHiSpeedChanges.end());
 	}
 
-	bool ScoreEditorTimeline::hiSpeedControl(const ScoreContext& context, int tick, float speed,
-	                                         int layer, float skip, HiSpeedEaseType ease,
-	                                         bool hideNotes, bool selected)
+	bool ScoreEditorTimeline::hiSpeedControl(const ScoreContext& context, int tick, float speed, int layer, float skip, HiSpeedEaseType ease, bool hideNotes, bool selected)
 	{
 		bool showLayerName = !(layer == -1 || context.selectedLayer == layer);
 		bool enabled = layer == -1 || context.selectedLayer == layer || context.showAllLayers;
@@ -2637,8 +2656,8 @@ namespace MikuMikuWorld
 	{
 		return waypointControl(context, waypoint.name, waypoint.tick);
 	}
-	bool ScoreEditorTimeline::waypointControl(const ScoreContext& context, std::string name,
-	                                          int tick)
+
+	bool ScoreEditorTimeline::waypointControl(const ScoreContext& context, std::string name, int tick)
 	{
 		if (tick < 0)
 			return false;
@@ -2790,13 +2809,16 @@ namespace MikuMikuWorld
 				}
 				UI::endPropertyColumns();
 
-				ImGui::Separator();
-				if (ImGui::Button(getString("remove"), ImVec2(-1, UI::btnSmall.y + 2)))
+				if (hiSpeed.tick != 0)
 				{
-					ImGui::CloseCurrentPopup();
-					Score prev = context.score;
-					context.score.hiSpeedChanges.erase(eventEdit.editId);
-					context.pushHistory("Remove hi-speed change", prev, context.score);
+					ImGui::Separator();
+					if (ImGui::Button(getString("remove"), ImVec2(-1, UI::btnSmall.y + 2)))
+					{
+						ImGui::CloseCurrentPopup();
+						Score prev = context.score;
+						context.score.hiSpeedChanges.erase(eventEdit.editId);
+						context.pushHistory("Remove hi-speed change", prev, context.score);
+					}
 				}
 			}
 			else if (eventEdit.type == EventType::Waypoint)
@@ -2836,8 +2858,7 @@ namespace MikuMikuWorld
 		}
 	}
 
-	bool ScoreEditorTimeline::isMouseInHoldPath(const Note& n1, const Note& n2, EaseType ease,
-	                                            float x, float y)
+	bool ScoreEditorTimeline::isMouseInHoldPath(const Note& n1, const Note& n2, EaseType ease, float x, float y)
 	{
 		float xStart1 = laneToPosition(n1.lane);
 		float xStart2 = laneToPosition(n1.lane + n1.width);
@@ -3262,4 +3283,389 @@ namespace MikuMikuWorld
 		offset = std::max(minOffset, tickToPosition(context.currentTick) +
 		                                 (size.y * (1.0f - config.cursorPositionThreshold)));
 	}
-} // namespace MikuMikuWorld
+	
+	void ScoreEditorTimeline::drawHiSpeedGraph(ScoreContext& context)
+{
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	if (!drawList) return;
+
+	std::map<int, std::vector<HiSpeedChange>> layerChanges;
+	for (const auto& [id, hiSpeed] : context.score.hiSpeedChanges)
+	{
+		if (context.score.layers[hiSpeed.layer].hidden)
+			continue;
+		layerChanges[hiSpeed.layer].push_back(hiSpeed);
+	}
+
+	if (layerChanges.empty()) return;
+
+	for (auto& [layer, changes] : layerChanges) {
+		std::sort(changes.begin(), changes.end(), [](const HiSpeedChange& a, const HiSpeedChange& b) {
+			return a.tick < b.tick;
+		});
+	}
+
+	float dpiScale = ImGui::GetMainViewport()->DpiScale;
+	float laneStartX = getTimelineEndX(context) + (10.0f * dpiScale); 
+	float laneWidth = 100.0f * dpiScale;
+	float laneEndX = laneStartX + laneWidth;
+	
+	ImU32 bgColor = IM_COL32(20, 20, 20, 150);
+	drawList->AddRectFilled(ImVec2(laneStartX, position.y), ImVec2(laneEndX, position.y + size.y), bgColor);
+
+	float padding = 15.0f * dpiScale;
+	float drawableStartX = laneStartX + padding;
+	float drawableWidth = laneWidth - (padding * 2);
+
+	// 設定画面で指定された上限・下限値を参照する
+	float graphLimit = config.hiSpeedGraphLimit;
+
+	// スケール計算（余計なマージンを廃止し、上限に達したらピッタリ壁に付くように修正）
+	auto calcScale = [&](const std::vector<HiSpeedChange>& changes) {
+		float minS = 0.0f;
+		float maxS = 1.0f; // 最低でも 1.0x までは描画領域を確保
+		for (const auto& change : changes) {
+			float s = std::clamp(change.speed, -graphLimit, graphLimit);
+			if (s < minS) minS = s;
+			if (s > maxS) maxS = s;
+		}
+		// 0.0x の基準線が左壁にベタ付きにならないよう、マイナス側にだけ 25% の余白を設ける
+		// プラス側（右壁）には余白を足さないため、上限値はパディング位置にピッタリ張り付く
+		float requiredMin = -maxS * 0.25f;
+		if (minS > requiredMin) {
+			minS = requiredMin;
+		}
+		return std::make_pair(minS, maxS);
+	};
+
+	auto getX = [&](float speed, float minS, float maxS) {
+		float normalized = (speed - minS) / (maxS - minS);
+		return drawableStartX + (normalized * drawableWidth);
+	};
+
+	float activeMin = 0.0f, activeMax = 1.0f;
+	if (layerChanges.find(context.selectedLayer) != layerChanges.end()) {
+		auto scale = calcScale(layerChanges[context.selectedLayer]);
+		activeMin = scale.first;
+		activeMax = scale.second;
+	} else {
+		std::vector<HiSpeedChange> dummy;
+		auto scale = calcScale(dummy);
+		activeMin = scale.first;
+		activeMax = scale.second;
+	}
+
+	float baselineX = getX(0.0f, activeMin, activeMax);
+	ImU32 baselineColor = IM_COL32(255, 255, 255, 60);
+	drawList->AddLine(ImVec2(baselineX, position.y), ImVec2(baselineX, position.y + size.y), baselineColor, 1.0f);
+
+	ImVec2 mousePos = ImGui::GetMousePos();
+	bool isAnyNodeHovered = false;
+
+	ImU32 ghostLineColor = IM_COL32(150, 150, 150, 60);
+	ImU32 ghostPointColor = IM_COL32(150, 150, 150, 60);
+
+	for (const auto& [layer, changes] : layerChanges) {
+		if (layer == context.selectedLayer) continue;
+
+		auto ghostScale = calcScale(changes);
+		float gMin = ghostScale.first;
+		float gMax = ghostScale.second;
+
+		for (size_t i = 0; i < changes.size(); ++i) {
+			const auto& current = changes[i];
+			
+			// 大きさと色の判定
+			bool isLarge = (current.speed >= graphLimit || current.speed <= -graphLimit);
+			bool isUltraExtreme = (current.speed >= 1000.0f || current.speed <= -1000.0f);
+			
+			float cSpeed1 = std::clamp(current.speed, -graphLimit, graphLimit);
+			float y1 = position.y - tickToPosition(current.tick) + visualOffset;
+			float x1 = getX(cSpeed1, gMin, gMax);
+
+			if (i < changes.size() - 1) {
+				const auto& next = changes[i + 1];
+				float cSpeed2 = std::clamp(next.speed, -graphLimit, graphLimit);
+				float y2 = position.y - tickToPosition(next.tick) + visualOffset;
+				float x2 = getX(cSpeed2, gMin, gMax);
+
+				if (current.ease == HiSpeedEaseType::Linear) {
+					drawList->AddLine(ImVec2(x1, y1), ImVec2(x2, y2), ghostLineColor, 1.5f);
+				} else {
+					drawList->AddLine(ImVec2(x1, y1), ImVec2(x1, y2), ghostLineColor, 1.5f);
+					drawList->AddLine(ImVec2(x1, y2), ImVec2(x2, y2), ghostLineColor, 1.5f);
+				}
+			} else {
+				drawList->AddLine(ImVec2(x1, y1), ImVec2(x1, position.y), ghostLineColor, 1.5f);
+			}
+			
+			float radius = isLarge ? 3.5f : 2.0f;
+			ImU32 pColor = isUltraExtreme ? IM_COL32(255, 120, 120, 80) : ghostPointColor;
+			drawList->AddCircleFilled(ImVec2(x1, y1), radius, pColor);
+		}
+	}
+
+	ImU32 lineColor = speedColor;
+	ImU32 pointColor = IM_COL32(255, 255, 255, 255); 
+	ImU32 hoverColor = IM_COL32(255, 150, 150, 255); 
+	ImU32 selectedColor = IM_COL32(255, 200, 100, 255); 
+
+	static id_t draggingNodeID = -1;
+	static bool nodeWasDragged = false;
+	static Score prevScoreForDrag;
+	static float dragAccumulatedSpeed = 0.0f;
+
+	std::vector<HiSpeedChange> hoveredTooltips;
+
+	if (layerChanges.find(context.selectedLayer) != layerChanges.end()) {
+		auto& activeChanges = layerChanges[context.selectedLayer];
+		
+		for (size_t i = 0; i < activeChanges.size(); ++i)
+		{
+			const auto& current = activeChanges[i];
+			
+			// 大きさと色の判定（アクティブレイヤーも確実に graphLimit に連動）
+			bool isLarge = (current.speed >= graphLimit || current.speed <= -graphLimit);
+			bool isUltraExtreme = (current.speed >= 1000.0f || current.speed <= -1000.0f);
+			
+			float cSpeed1 = std::clamp(current.speed, -graphLimit, graphLimit);
+			float y1 = position.y - tickToPosition(current.tick) + visualOffset;
+			float x1 = getX(cSpeed1, activeMin, activeMax);
+
+			if (i < activeChanges.size() - 1)
+			{
+				const auto& next = activeChanges[i + 1];
+				float cSpeed2 = std::clamp(next.speed, -graphLimit, graphLimit);
+				float y2 = position.y - tickToPosition(next.tick) + visualOffset;
+				float x2 = getX(cSpeed2, activeMin, activeMax);
+
+				if (current.ease == HiSpeedEaseType::Linear) {
+					drawList->AddLine(ImVec2(x1, y1), ImVec2(x2, y2), lineColor, 2.0f);
+				} else {
+					drawList->AddLine(ImVec2(x1, y1), ImVec2(x1, y2), lineColor, 2.0f);
+					drawList->AddLine(ImVec2(x1, y2), ImVec2(x2, y2), lineColor, 2.0f);
+				}
+			}
+			else
+			{
+				drawList->AddLine(ImVec2(x1, y1), ImVec2(x1, position.y), lineColor, 2.0f);
+			}
+
+			bool isSelected = context.selectedHiSpeedChanges.find(current.ID) != context.selectedHiSpeedChanges.end();
+			bool isHovered = false;
+			bool isDraggingThis = (draggingNodeID == current.ID);
+
+			if (abs(mousePos.x - x1) < 8.0f && abs(mousePos.y - y1) < 8.0f) {
+				isHovered = true;
+				isAnyNodeHovered = true;
+			}
+
+			if (isHovered || isDraggingThis) {
+				isHoveringNote = true; 
+			}
+
+			ImU32 extremeNormalColor = IM_COL32(255, 140, 140, 255); 
+			ImU32 extremeHoverColor  = IM_COL32(255, 180, 180, 255);
+			ImU32 extremeSelectColor = IM_COL32(255, 150, 50, 255);
+
+			// 上限に達していたら大きくする
+			float radius = (isHovered || isDraggingThis) ? 5.0f : 3.0f;
+			if (isLarge) radius += 2.0f;
+
+			ImU32 circleColor;
+			// 1000.0x以上なら色を赤っぽくする
+			if (isUltraExtreme) {
+				circleColor = isSelected ? extremeSelectColor : ((isHovered || isDraggingThis) ? extremeHoverColor : extremeNormalColor);
+			} else {
+				circleColor = isSelected ? selectedColor : ((isHovered || isDraggingThis) ? hoverColor : pointColor);
+			}
+			drawList->AddCircleFilled(ImVec2(x1, y1), radius, circleColor);
+
+			if (isHovered && draggingNodeID == -1) {
+				hoveredTooltips.push_back(current);
+
+				if (ImGui::IsMouseClicked(0)) {
+					if (ImGui::GetIO().KeyCtrl) {
+						if (isSelected) {
+							context.selectedHiSpeedChanges.erase(current.ID);
+						} else {
+							context.selectedHiSpeedChanges.insert(current.ID);
+						}
+					} else {
+						if (!isSelected) {
+							context.selectedHiSpeedChanges.clear();
+							context.selectedHiSpeedChanges.insert(current.ID);
+						}
+					}
+
+					draggingNodeID = current.ID;
+					nodeWasDragged = false;
+					prevScoreForDrag = context.score;
+					dragAccumulatedSpeed = current.speed;
+				}
+
+				if (ImGui::IsMouseClicked(1)) {
+					if (current.tick != 0) {
+						Score prev = context.score;
+						
+						std::unordered_set<id_t> deleteIds;
+						if (context.selectedHiSpeedChanges.find(current.ID) != context.selectedHiSpeedChanges.end()) {
+							deleteIds = context.selectedHiSpeedChanges;
+						} else {
+							deleteIds.insert(current.ID);
+						}
+
+						for (auto id : deleteIds) {
+							if (context.score.hiSpeedChanges[id].tick != 0) { 
+								context.score.hiSpeedChanges.erase(id);
+							}
+						}
+						context.pushHistory("Delete hi-speed", prev, context.score);
+					}
+				}
+			}
+
+			if (isDraggingThis) {
+				if (ImGui::IsMouseDragging(0, 2.0f)) {
+					nodeWasDragged = true;
+				}
+
+				if (nodeWasDragged) {
+					float speedPerPixel = (activeMax - activeMin) / drawableWidth;
+					if (speedPerPixel < 0.01f) speedPerPixel = 0.01f;
+
+					dragAccumulatedSpeed += ImGui::GetIO().MouseDelta.x * speedPerPixel;
+					
+					float newSpeed = std::round(dragAccumulatedSpeed * 4.0f) / 4.0f;
+
+					int originalTick = prevScoreForDrag.hiSpeedChanges[current.ID].tick;
+					float originalSpeed = prevScoreForDrag.hiSpeedChanges[current.ID].speed;
+
+					int newTick = std::max(0, hoverTick);
+					if (originalTick == 0) newTick = 0; 
+
+					int tickDelta = newTick - originalTick;
+					float speedDelta = newSpeed - originalSpeed;
+
+					if (ImGui::GetIO().KeyShift) {
+						speedDelta = 0.0f;
+					}
+
+					std::unordered_set<id_t> moveIds;
+					if (context.selectedHiSpeedChanges.find(current.ID) != context.selectedHiSpeedChanges.end()) {
+						moveIds = context.selectedHiSpeedChanges;
+					} else {
+						moveIds.insert(current.ID);
+					}
+
+					for (auto id : moveIds) {
+						if (prevScoreForDrag.hiSpeedChanges[id].tick + tickDelta < 0) {
+							tickDelta = -prevScoreForDrag.hiSpeedChanges[id].tick;
+						}
+					}
+
+					for (auto id : moveIds) {
+						if (prevScoreForDrag.hiSpeedChanges[id].tick == 0) {
+							tickDelta = 0;
+						}
+					}
+
+					bool canMoveTime = true;
+					if (tickDelta != 0) {
+						for (auto id : moveIds) {
+							int targetT = prevScoreForDrag.hiSpeedChanges[id].tick + tickDelta;
+							int targetL = prevScoreForDrag.hiSpeedChanges[id].layer;
+							for (const auto& [otherId, hsc] : prevScoreForDrag.hiSpeedChanges) {
+								if (moveIds.find(otherId) == moveIds.end() && hsc.tick == targetT && hsc.layer == targetL) {
+									canMoveTime = false; break;
+								}
+							}
+							if (!canMoveTime) break;
+						}
+					} else {
+						canMoveTime = true;
+					}
+
+					if (!canMoveTime) tickDelta = 0; 
+
+					for (auto id : moveIds) {
+						auto& editingNode = context.score.hiSpeedChanges[id];
+						const auto& prevNode = prevScoreForDrag.hiSpeedChanges[id];
+						editingNode.tick = prevNode.tick + tickDelta;
+						editingNode.speed = prevNode.speed + speedDelta;
+					}
+
+					ImGui::BeginTooltip();
+					ImGui::Text("Speed: %.2fx", context.score.hiSpeedChanges[current.ID].speed);
+					ImGui::Text("Tick: %d", context.score.hiSpeedChanges[current.ID].tick);
+					if (moveIds.size() > 1) {
+						ImGui::Text("(%zu items moving)", moveIds.size());
+					}
+					ImGui::EndTooltip();
+				}
+
+				if (ImGui::IsMouseReleased(0)) {
+					if (nodeWasDragged) {
+						context.pushHistory("Drag hi-speed node", prevScoreForDrag, context.score);
+					} else {
+						if (!ImGui::GetIO().KeyCtrl && !ImGui::GetIO().KeyShift) {
+							eventEdit.editId = current.ID;
+							eventEdit.editHiSpeed = current.speed;
+							eventEdit.editHiSpeedEase = current.ease;
+							eventEdit.editHiSpeedSkip = current.skips;
+							eventEdit.editHiSpeedHideNote = current.hideNotes;
+							eventEdit.type = EventType::HiSpeed;
+							ImGui::OpenPopup("edit_event");
+						}
+					}
+					draggingNodeID = -1;
+				}
+			}
+		}
+	}
+
+	if (!hoveredTooltips.empty() && draggingNodeID == -1) {
+		ImGui::BeginTooltip();
+		for (const auto& node : hoveredTooltips) {
+			ImGui::Text("%.2fx", node.speed);
+			ImGui::SameLine();
+			ImGui::TextDisabled("Tick: %d", node.tick);
+			if (node.skips > 0.0f) {
+				ImGui::SameLine();
+				ImGui::TextDisabled("| Skip: %.2f", node.skips);
+			}
+		}
+		ImGui::EndTooltip();
+	}
+
+	if (!isAnyNodeHovered && mouseInTimeline && mousePos.x >= laneStartX && mousePos.x <= laneEndX) {
+		if (ImGui::IsMouseDoubleClicked(0)) {
+			float normalizedX = std::clamp((mousePos.x - drawableStartX) / drawableWidth, 0.0f, 1.0f);
+			float newSpeed = activeMin + (normalizedX * (activeMax - activeMin));
+			newSpeed = std::round(newSpeed * 4.0f) / 4.0f;
+
+			bool canAdd = true;
+			for (const auto& [id, hsc] : context.score.hiSpeedChanges) {
+				if (hsc.tick == hoverTick && hsc.layer == context.selectedLayer) {
+					canAdd = false; break;
+				}
+			}
+
+			if (canAdd) {
+				Score prev = context.score;
+				id_t newId = getNextHiSpeedID();
+				context.score.hiSpeedChanges[newId] = {
+					newId,
+					hoverTick,
+					newSpeed,
+					context.selectedLayer,
+					0.0f, 
+					HiSpeedEaseType::None,
+					false
+				};
+				context.pushHistory("Add hi-speed", prev, context.score);
+			}
+		}
+	}
+}
+}

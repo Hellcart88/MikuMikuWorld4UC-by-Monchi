@@ -542,283 +542,283 @@ namespace MikuMikuWorld
 
 	void ScorePreviewWindow::drawHoldCurves(const ScoreContext& context, Renderer* renderer)
 	{
-	const float total_tm = accumulateDuration(context.scorePreviewDrawData.maxTicks, TICKS_PER_BEAT, context.score.tempoChanges);
-	const double current_tm = accumulateDuration(context.currentTick, TICKS_PER_BEAT, context.score.tempoChanges);
-	const float noteDuration = Engine::getNoteDuration(config.pvNoteSpeed);
-	const float mirror = config.pvMirrorScore ? -1 : 1;
-	const auto& drawData = context.scorePreviewDrawData;
-
-	std::vector<double> layer_stm(context.score.layers.size());
-	for (int i = 0; i < context.score.layers.size(); ++i)
-		layer_stm[i] = Engine::accumulateScaledDuration(context.currentTick, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, i);
-
-	for (auto& segment : drawData.drawingHoldSegments)
-	{
-		// 存在チェックを行い、データが既に消えていたら描画を安全にスキップする
-		auto endIt = context.score.notes.find(segment.endID);
-		if (endIt == context.score.notes.end())
-			continue;
-		const Note& holdEnd = endIt->second;
-
-		auto startIt = context.score.notes.find(holdEnd.parentID);
-		if (startIt == context.score.notes.end())
-			continue;
-		const Note& holdStart = startIt->second;
-		
-		int layer = std::clamp(holdStart.layer, 0, (int)context.score.layers.size() - 1);
-		double current_stm = layer_stm[layer];
-
-		if (current_tm >= segment.endTime)
-			continue;
-
-		if (std::abs(segment.headTime - segment.tailTime) < 1e-6)
-			continue;
-
-		// =======================================================================================
-		// ★ 完全修正版：STM補間（曲線の維持）と、正確なアンカー固定（途切れ防止）のハイブリッド
-		// =======================================================================================
-		
-		double start_stm = segment.headTime;
-		double start_time = segment.startTime;
-
-		// ノーツが判定ラインを越えた（ホールド中）場合、始点を「現在のSTM」と「現在の時間」に強制固定する
-		// これにより、推測計算によるズレが消滅し、絶対に判定ライン（Y=1.0）から帯が途切れません。
-		if (current_tm > segment.startTime)
+		const float total_tm = accumulateDuration(context.scorePreviewDrawData.maxTicks, TICKS_PER_BEAT, context.score.tempoChanges);
+		const double current_tm = accumulateDuration(context.currentTick, TICKS_PER_BEAT, context.score.tempoChanges);
+		const float noteDuration = Engine::getNoteDuration(config.pvNoteSpeed);
+		const float mirror = config.pvMirrorScore ? -1 : 1;
+		const auto& drawData = context.scorePreviewDrawData;
+	
+		std::vector<double> layer_stm(context.score.layers.size());
+		for (int i = 0; i < context.score.layers.size(); ++i)
+			layer_stm[i] = Engine::accumulateScaledDuration(context.currentTick, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, i);
+	
+		for (auto& segment : drawData.drawingHoldSegments)
 		{
-			start_stm = current_stm;
-			start_time = current_tm;
-		}
-
-		double stm_top = current_stm + 1.0 * noteDuration;
-		double stm_bottom = current_stm - 0.2 * noteDuration;
-
-		// 画面に映る範囲のみを計算するカリング処理（元のコードの考え方と同じ）
-		double p_view_a = unlerpD(start_stm, segment.tailTime, stm_bottom);
-		double p_view_b = unlerpD(start_stm, segment.tailTime, stm_top);
-		double p_min = std::clamp(std::min(p_view_a, p_view_b), 0.0, 1.0);
-		double p_max = std::clamp(std::max(p_view_a, p_view_b), 0.0, 1.0);
-
-		if (p_min >= p_max)
-			continue;
-
-		// =======================================================================================
-
-		float holdStartCenter = Engine::getNoteCenter(holdStart) * mirror;
-		bool isHoldActivated = current_tm >= segment.activeTime;
-		bool isSegmentActivated = current_tm >= segment.startTime;
-
-		int textureID;
-		int sprIndex;
-		if (segment.isGuide)
-		{
-			textureID = noteTextures.guideColors;
-			const HoldNote& hold = context.score.holdNotes.at(holdStart.ID);
-			sprIndex = (int)hold.guideColor;
-		}
-		else
-		{
-			textureID = noteTextures.holdPath;
-			sprIndex = (!holdStart.critical ? 1 : 3);
-		}
-
-		if (textureID == -1) continue;
-		const Texture& texture = ResourceManager::textures[textureID];
-		if (!isArrayIndexInBounds(sprIndex, texture.sprites)) continue;
-		const Sprite& segmentSprite = texture.sprites[sprIndex];
-
-		const auto ease = getEaseFunction(segment.ease);
-		float startLeft = segment.headLeft, startRight = segment.headRight, endLeft = segment.tailLeft, endRight = segment.tailRight;
-
-		// 分割数の計算 (元のSTMを用いたロジックを維持)
-		double start_y = Engine::approach(start_stm - noteDuration, start_stm, current_stm);
-		double end_y   = Engine::approach(segment.tailTime - noteDuration, segment.tailTime, current_stm);
-
-		int steps = 10;
-		if (segment.ease == EaseType::Linear)
-		{
-			double mid_travel = (start_y + end_y) / 2.0;
-			double perspective_factor = std::pow(std::max(0.1, mid_travel), 0.8);
-			double x_diff_max = std::max(std::abs(startLeft - endLeft), std::abs(startRight - endRight));
+			// 存在チェックを行い、データが既に消えていたら描画を安全にスキップする
+			auto endIt = context.score.notes.find(segment.endID);
+			if (endIt == context.score.notes.end())
+				continue;
+			const Note& holdEnd = endIt->second;
+	
+			auto startIt = context.score.notes.find(holdEnd.parentID);
+			if (startIt == context.score.notes.end())
+				continue;
+			const Note& holdStart = startIt->second;
 			
-			// Xの移動量計算には時間割合(time_frac)を使う
-			double t_frac_start = unlerpD(segment.startTime, segment.endTime, start_time);
-			double t_frac_end   = 1.0; 
-			double x_diff = (x_diff_max * 2.5 / perspective_factor) * std::abs(t_frac_end - t_frac_start);
-			double curve_change_scale = std::pow(x_diff, 0.8);
-			steps = std::max(1, static_cast<int>(std::ceil(curve_change_scale * 10.0)));
-		}
-		else
-		{
-			double pos_offset = 0.0;
-			double ref_start_lane = std::abs(startLeft - endLeft) > std::abs(startRight - endRight) ? startLeft : startRight;
-			double ref_end_lane = std::abs(startLeft - endLeft) > std::abs(startRight - endRight) ? endLeft : endRight;
-			
-			double t_frac_start = unlerpD(segment.startTime, segment.endTime, start_time);
-			double t_frac_end   = 1.0; 
-
-			double pos_offset_this_side = 0.0;
-			for (double r : {0.25, 0.75}) {
-				double time_frac = lerpD(t_frac_start, t_frac_end, r);
-				double interp_frac = ease(0.0f, 1.0f, (float)time_frac); 
-				double y = lerpD(start_y, end_y, r);
-				double lane = lerpD(ref_start_lane, ref_end_lane, interp_frac);
-				double ref_pos = lerpD(ref_start_lane, ref_end_lane, r);
-				double screen_offset = std::abs(lane - ref_pos);
-				double compensation_factor = std::pow(std::max(0.1, y), 0.8);
-				pos_offset_this_side += screen_offset / compensation_factor;
-			}
-			pos_offset = pos_offset_this_side * std::pow(std::abs(t_frac_end - t_frac_start), 0.7);
-			double curve_change_scale = std::pow(pos_offset, 0.4) * 2.0;
-			steps = std::max(1, static_cast<int>(std::ceil(curve_change_scale * 10.0)));
-		}
-		steps = std::clamp(steps, 1, 200);
-
-		// ==============================================================================
-
-		if (isSegmentActivated && context.score.holdNotes.at(holdStart.ID).startType == HoldNoteType::Normal)
-		{
-			double base_frac = unlerpD(segment.startTime, segment.endTime, start_time);
-			float l = ease(startLeft, endLeft, (float)base_frac), r = ease(startRight, endRight, (float)base_frac);
-			drawNoteBase(renderer, holdStart, l, r, 1.f, segment.activeTime / total_tm);
-			if (holdStart.friction) drawTraceDiamond(renderer, holdStart, l, r, 1.f);
-		}
-
-		if (config.pvMirrorScore)
-		{
-			std::swap(startLeft *= -1, startRight *= -1);
-			std::swap(endLeft *= -1, endRight *= -1);
-		}
-
-		double holdStartProgress, holdEndProgress;
-		if (segment.isGuide)
-		{
-			const HoldNote& hold = context.score.holdNotes.at(holdStart.ID);
-			double totalJoints = 1 + hold.steps.size();
-			double headProgress = segment.tailStepIndex / totalJoints;
-			double tailProgress = (segment.tailStepIndex + 1) / totalJoints;
-
-			double base_frac = unlerpD(segment.startTime, segment.endTime, start_time);
-			holdStartProgress = lerpD(headProgress, tailProgress, base_frac);
-			holdEndProgress = lerpD(headProgress, tailProgress, 1.0);
-		}
-
-		double from_percentage = 0;
-		
-		// ループ初期値の設定
-		double stepStart_stm = lerpD(start_stm, segment.tailTime, p_min);
-		double stepTop = Engine::approach(stepStart_stm - noteDuration, stepStart_stm, current_stm);
-
-		double stepStart_time = lerpD(start_time, segment.endTime, p_min);
-		double stepStart_timeFrac = unlerpD(segment.startTime, segment.endTime, stepStart_time);
-
-		auto model = DirectX::XMMatrixIdentity();
-		float baseAlpha = segment.isGuide ? config.pvGuideAlpha : config.pvHoldAlpha;
-		int zIndex = Engine::getZIndex(segment.isGuide ? SpriteLayer::GUIDE_PATH : SpriteLayer::HOLD_PATH, holdStartCenter, segment.activeTime / total_tm);
-
-		for (int i = 0; i < steps; i++)
-		{
-			double to_p = lerpD(p_min, p_max, (double)(i + 1) / steps);
-			
-			// Y座標用には「STM」を補間して使う（純正コードの美しい曲線を維持）
-			double stepEnd_stm = lerpD(start_stm, segment.tailTime, to_p);
-			double stepBottom = Engine::approach(stepEnd_stm - noteDuration, stepEnd_stm, current_stm);
-
-			// X座標用には「時間割合」を補間して使う（レーンの移動が時間ベースで正確になる）
-			double stepEnd_time = lerpD(start_time, segment.endTime, to_p);
-			double stepEnd_timeFrac = unlerpD(segment.startTime, segment.endTime, stepEnd_time);
-
-			float stepStartLeft = ease(startLeft, endLeft, (float)stepStart_timeFrac);
-			float   stepEndLeft = ease(startLeft, endLeft, (float)stepEnd_timeFrac);
-			float stepStartRight = ease(startRight, endRight, (float)stepStart_timeFrac);
-			float   stepEndRight = ease(startRight, endRight, (float)stepEnd_timeFrac);
-
+			int layer = std::clamp(holdStart.layer, 0, (int)context.score.layers.size() - 1);
+			double current_stm = layer_stm[layer];
+	
+			if (current_tm >= segment.endTime)
+				continue;
+	
+			if (std::abs(segment.headTime - segment.tailTime) < 1e-6)
+				continue;
+	
 			// =======================================================================================
-			// マイナスHS対策：Y座標が逆転した場合、手前と奥の座標を丸ごとスワップしてねじれを防ぐ
+			// ★ 完全修正版：STM補間（曲線の維持）と、正確なアンカー固定（途切れ防止）のハイブリッド
 			// =======================================================================================
-			float q_leftStart = stepStartLeft;
-			float q_leftStop = stepEndLeft;
-			float q_rightStart = stepStartRight;
-			float q_rightStop = stepEndRight;
-			float q_top = (float)stepTop;
-			float q_bottom = (float)stepBottom;
-
-			if (q_top < q_bottom)
+			
+			double start_stm = segment.headTime;
+			double start_time = segment.startTime;
+	
+			// ノーツが判定ラインを越えた（ホールド中）場合、始点を「現在のSTM」と「現在の時間」に強制固定する
+			// これにより、推測計算によるズレが消滅し、絶対に判定ライン（Y=1.0）から帯が途切れません。
+			if (current_tm > segment.startTime)
 			{
-				std::swap(q_top, q_bottom);
-				std::swap(q_leftStart, q_leftStop);
-				std::swap(q_rightStart, q_rightStop);
+				start_stm = current_stm;
+				start_time = current_tm;
 			}
-
-			auto vPos = Engine::perspectiveQuadvPos(q_leftStart, q_leftStop, q_rightStart, q_rightStop, q_top, q_bottom);
+	
+			double stm_top = current_stm + 1.0 * noteDuration;
+			double stm_bottom = current_stm - 0.2 * noteDuration;
+	
+			// 画面に映る範囲のみを計算するカリング処理（元のコードの考え方と同じ）
+			double p_view_a = unlerpD(start_stm, segment.tailTime, stm_bottom);
+			double p_view_b = unlerpD(start_stm, segment.tailTime, stm_top);
+			double p_min = std::clamp(std::min(p_view_a, p_view_b), 0.0, 1.0);
+			double p_max = std::clamp(std::max(p_view_a, p_view_b), 0.0, 1.0);
+	
+			if (p_min >= p_max)
+				continue;
+	
 			// =======================================================================================
-
-			float spr_x1, spr_x2, spr_y1, spr_y2;
-			std::array<DirectX::XMFLOAT4, 4> vertexColors;
-
+	
+			float holdStartCenter = Engine::getNoteCenter(holdStart) * mirror;
+			bool isHoldActivated = current_tm >= segment.activeTime;
+			bool isSegmentActivated = current_tm >= segment.startTime;
+	
+			int textureID;
+			int sprIndex;
+			if (segment.isGuide)
+			{
+				textureID = noteTextures.guideColors;
+				const HoldNote& hold = context.score.holdNotes.at(holdStart.ID);
+				sprIndex = (int)hold.guideColor;
+			}
+			else
+			{
+				textureID = noteTextures.holdPath;
+				sprIndex = (!holdStart.critical ? 1 : 3);
+			}
+	
+			if (textureID == -1) continue;
+			const Texture& texture = ResourceManager::textures[textureID];
+			if (!isArrayIndexInBounds(sprIndex, texture.sprites)) continue;
+			const Sprite& segmentSprite = texture.sprites[sprIndex];
+	
+			const auto ease = getEaseFunction(segment.ease);
+			float startLeft = segment.headLeft, startRight = segment.headRight, endLeft = segment.tailLeft, endRight = segment.tailRight;
+	
+			// 分割数の計算 (元のSTMを用いたロジックを維持)
+			double start_y = Engine::approach(start_stm - noteDuration, start_stm, current_stm);
+			double end_y   = Engine::approach(segment.tailTime - noteDuration, segment.tailTime, current_stm);
+	
+			int steps = 10;
+			if (segment.ease == EaseType::Linear)
+			{
+				double mid_travel = (start_y + end_y) / 2.0;
+				double perspective_factor = std::pow(std::max(0.1, mid_travel), 0.8);
+				double x_diff_max = std::max(std::abs(startLeft - endLeft), std::abs(startRight - endRight));
+				
+				// Xの移動量計算には時間割合(time_frac)を使う
+				double t_frac_start = unlerpD(segment.startTime, segment.endTime, start_time);
+				double t_frac_end   = 1.0; 
+				double x_diff = (x_diff_max * 2.5 / perspective_factor) * std::abs(t_frac_end - t_frac_start);
+				double curve_change_scale = std::pow(x_diff, 0.8);
+				steps = std::max(1, static_cast<int>(std::ceil(curve_change_scale * 10.0)));
+			}
+			else
+			{
+				double pos_offset = 0.0;
+				double ref_start_lane = std::abs(startLeft - endLeft) > std::abs(startRight - endRight) ? startLeft : startRight;
+				double ref_end_lane = std::abs(startLeft - endLeft) > std::abs(startRight - endRight) ? endLeft : endRight;
+				
+				double t_frac_start = unlerpD(segment.startTime, segment.endTime, start_time);
+				double t_frac_end   = 1.0; 
+	
+				double pos_offset_this_side = 0.0;
+				for (double r : {0.25, 0.75}) {
+					double time_frac = lerpD(t_frac_start, t_frac_end, r);
+					double interp_frac = ease(0.0f, 1.0f, (float)time_frac); 
+					double y = lerpD(start_y, end_y, r);
+					double lane = lerpD(ref_start_lane, ref_end_lane, interp_frac);
+					double ref_pos = lerpD(ref_start_lane, ref_end_lane, r);
+					double screen_offset = std::abs(lane - ref_pos);
+					double compensation_factor = std::pow(std::max(0.1, y), 0.8);
+					pos_offset_this_side += screen_offset / compensation_factor;
+				}
+				pos_offset = pos_offset_this_side * std::pow(std::abs(t_frac_end - t_frac_start), 0.7);
+				double curve_change_scale = std::pow(pos_offset, 0.4) * 2.0;
+				steps = std::max(1, static_cast<int>(std::ceil(curve_change_scale * 10.0)));
+			}
+			steps = std::clamp(steps, 1, 200);
+	
+			// ==============================================================================
+	
+			if (isSegmentActivated && context.score.holdNotes.at(holdStart.ID).startType == HoldNoteType::Normal)
+			{
+				double base_frac = unlerpD(segment.startTime, segment.endTime, start_time);
+				float l = ease(startLeft, endLeft, (float)base_frac), r = ease(startRight, endRight, (float)base_frac);
+				drawNoteBase(renderer, holdStart, l, r, 1.f, segment.activeTime / total_tm);
+				if (holdStart.friction) drawTraceDiamond(renderer, holdStart, l, r, 1.f);
+			}
+	
+			if (config.pvMirrorScore)
+			{
+				std::swap(startLeft *= -1, startRight *= -1);
+				std::swap(endLeft *= -1, endRight *= -1);
+			}
+	
+			double holdStartProgress, holdEndProgress;
 			if (segment.isGuide)
 			{
 				const HoldNote& hold = context.score.holdNotes.at(holdStart.ID);
-				double startProg = lerpD(holdStartProgress, holdEndProgress, from_percentage);
-				double to_percentage = double(i + 1) / steps;
-				double endProg = lerpD(holdStartProgress, holdEndProgress, to_percentage);
-				float startAlpha = baseAlpha;
-				float endAlpha = baseAlpha;
-				if (hold.fadeType == FadeType::Out) {
-					startAlpha *= (1.0f - (float)startProg);
-					endAlpha *= (1.0f - (float)endProg);
-				} else if (hold.fadeType == FadeType::In) {
-					startAlpha *= (float)startProg;
-					endAlpha *= (float)endProg;
-				}
-				vertexColors = {{
-					toFloat4(defaultTint, startAlpha),
-					toFloat4(defaultTint, endAlpha),
-					toFloat4(defaultTint, endAlpha),
-					toFloat4(defaultTint, startAlpha)
-				}};
-				spr_x1 = segmentSprite.getX();
-				spr_x2 = segmentSprite.getX() + segmentSprite.getWidth();
-				spr_y1 = segmentSprite.getY() + segmentSprite.getHeight(); 
-				spr_y2 = segmentSprite.getY();
-				from_percentage = to_percentage;
+				double totalJoints = 1 + hold.steps.size();
+				double headProgress = segment.tailStepIndex / totalJoints;
+				double tailProgress = (segment.tailStepIndex + 1) / totalJoints;
+	
+				double base_frac = unlerpD(segment.startTime, segment.endTime, start_time);
+				holdStartProgress = lerpD(headProgress, tailProgress, base_frac);
+				holdEndProgress = lerpD(headProgress, tailProgress, 1.0);
 			}
-			else
-			{
-				spr_x1 = segmentSprite.getX() + HOLD_XCUTOFF;
-				spr_x2 = segmentSprite.getX() + segmentSprite.getWidth() - HOLD_XCUTOFF;
-				spr_y1 = segmentSprite.getY();
-				spr_y2 = segmentSprite.getY() + segmentSprite.getHeight();
-			}
-
-			float texW = (float)texture.getWidth();
-			float texH = (float)texture.getHeight();
-			auto uv = Utils::getUV(spr_x1 / texW, spr_x2 / texW, spr_y1 / texH, spr_y2 / texH);
-
-			if (config.pvHoldAnimation && isHoldActivated && !segment.isGuide && isArrayIndexInBounds(sprIndex - 1, texture.sprites))
-			{
-				const Sprite& activeSprite = texture.sprites[sprIndex - 1];
-				const int norm2ActiveOffset = (int)(activeSprite.getY() - segmentSprite.getY());
-				double delta_tm = current_tm - segment.activeTime;
-				float normalAplha = (std::cos((float)delta_tm * MATH_PI * 2.f) + 2.f) / 3.f;
-				renderer->pushQuad(vPos, uv, model, toFloat4(defaultTint, baseAlpha * normalAplha), (int)texture.getID(), zIndex);
-				auto uvActive = Utils::getUV(spr_x1 / texW, spr_x2 / texW, (spr_y1 + norm2ActiveOffset) / texH, (spr_y2 + norm2ActiveOffset) / texH);
-				renderer->pushQuad(vPos, uvActive, model, toFloat4(defaultTint, baseAlpha * (1.f - normalAplha)), (int)texture.getID(), zIndex);
-			}
-			else if (segment.isGuide)
-			{
-				renderer->pushQuad(vPos, uv, model, vertexColors, (int)texture.getID(), zIndex);
-			}
-			else
-			{
-				renderer->pushQuad(vPos, uv, model, toFloat4(defaultTint, baseAlpha), (int)texture.getID(), zIndex);
-			}
+	
+			double from_percentage = 0;
 			
-			// ループ終端の更新処理
-			stepTop = stepBottom;
-			stepStart_timeFrac = stepEnd_timeFrac;
+			// ループ初期値の設定
+			double stepStart_stm = lerpD(start_stm, segment.tailTime, p_min);
+			double stepTop = Engine::approach(stepStart_stm - noteDuration, stepStart_stm, current_stm);
+	
+			double stepStart_time = lerpD(start_time, segment.endTime, p_min);
+			double stepStart_timeFrac = unlerpD(segment.startTime, segment.endTime, stepStart_time);
+	
+			auto model = DirectX::XMMatrixIdentity();
+			float baseAlpha = segment.isGuide ? config.pvGuideAlpha : config.pvHoldAlpha;
+			int zIndex = Engine::getZIndex(segment.isGuide ? SpriteLayer::GUIDE_PATH : SpriteLayer::HOLD_PATH, holdStartCenter, segment.activeTime / total_tm);
+	
+			for (int i = 0; i < steps; i++)
+			{
+				double to_p = lerpD(p_min, p_max, (double)(i + 1) / steps);
+				
+				// Y座標用には「STM」を補間して使う（純正コードの美しい曲線を維持）
+				double stepEnd_stm = lerpD(start_stm, segment.tailTime, to_p);
+				double stepBottom = Engine::approach(stepEnd_stm - noteDuration, stepEnd_stm, current_stm);
+	
+				// X座標用には「時間割合」を補間して使う（レーンの移動が時間ベースで正確になる）
+				double stepEnd_time = lerpD(start_time, segment.endTime, to_p);
+				double stepEnd_timeFrac = unlerpD(segment.startTime, segment.endTime, stepEnd_time);
+	
+				float stepStartLeft = ease(startLeft, endLeft, (float)stepStart_timeFrac);
+				float   stepEndLeft = ease(startLeft, endLeft, (float)stepEnd_timeFrac);
+				float stepStartRight = ease(startRight, endRight, (float)stepStart_timeFrac);
+				float   stepEndRight = ease(startRight, endRight, (float)stepEnd_timeFrac);
+	
+				// =======================================================================================
+				// マイナスHS対策：Y座標が逆転した場合、手前と奥の座標を丸ごとスワップしてねじれを防ぐ
+				// =======================================================================================
+				float q_leftStart = stepStartLeft;
+				float q_leftStop = stepEndLeft;
+				float q_rightStart = stepStartRight;
+				float q_rightStop = stepEndRight;
+				float q_top = (float)stepTop;
+				float q_bottom = (float)stepBottom;
+	
+				if (q_top < q_bottom)
+				{
+					std::swap(q_top, q_bottom);
+					std::swap(q_leftStart, q_leftStop);
+					std::swap(q_rightStart, q_rightStop);
+				}
+	
+				auto vPos = Engine::perspectiveQuadvPos(q_leftStart, q_leftStop, q_rightStart, q_rightStop, q_top, q_bottom);
+				// =======================================================================================
+	
+				float spr_x1, spr_x2, spr_y1, spr_y2;
+				std::array<DirectX::XMFLOAT4, 4> vertexColors;
+	
+				if (segment.isGuide)
+				{
+					const HoldNote& hold = context.score.holdNotes.at(holdStart.ID);
+					double startProg = lerpD(holdStartProgress, holdEndProgress, from_percentage);
+					double to_percentage = double(i + 1) / steps;
+					double endProg = lerpD(holdStartProgress, holdEndProgress, to_percentage);
+					float startAlpha = baseAlpha;
+					float endAlpha = baseAlpha;
+					if (hold.fadeType == FadeType::Out) {
+						startAlpha *= (1.0f - (float)startProg);
+						endAlpha *= (1.0f - (float)endProg);
+					} else if (hold.fadeType == FadeType::In) {
+						startAlpha *= (float)startProg;
+						endAlpha *= (float)endProg;
+					}
+					vertexColors = {{
+						toFloat4(defaultTint, startAlpha),
+						toFloat4(defaultTint, endAlpha),
+						toFloat4(defaultTint, endAlpha),
+						toFloat4(defaultTint, startAlpha)
+					}};
+					spr_x1 = segmentSprite.getX();
+					spr_x2 = segmentSprite.getX() + segmentSprite.getWidth();
+					spr_y1 = segmentSprite.getY() + segmentSprite.getHeight(); 
+					spr_y2 = segmentSprite.getY();
+					from_percentage = to_percentage;
+				}
+				else
+				{
+					spr_x1 = segmentSprite.getX() + HOLD_XCUTOFF;
+					spr_x2 = segmentSprite.getX() + segmentSprite.getWidth() - HOLD_XCUTOFF;
+					spr_y1 = segmentSprite.getY();
+					spr_y2 = segmentSprite.getY() + segmentSprite.getHeight();
+				}
+	
+				float texW = (float)texture.getWidth();
+				float texH = (float)texture.getHeight();
+				auto uv = Utils::getUV(spr_x1 / texW, spr_x2 / texW, spr_y1 / texH, spr_y2 / texH);
+	
+				if (config.pvHoldAnimation && isHoldActivated && !segment.isGuide && isArrayIndexInBounds(sprIndex - 1, texture.sprites))
+				{
+					const Sprite& activeSprite = texture.sprites[sprIndex - 1];
+					const int norm2ActiveOffset = (int)(activeSprite.getY() - segmentSprite.getY());
+					double delta_tm = current_tm - segment.activeTime;
+					float normalAplha = (std::cos((float)delta_tm * MATH_PI * 2.f) + 2.f) / 3.f;
+					renderer->pushQuad(vPos, uv, model, toFloat4(defaultTint, baseAlpha * normalAplha), (int)texture.getID(), zIndex);
+					auto uvActive = Utils::getUV(spr_x1 / texW, spr_x2 / texW, (spr_y1 + norm2ActiveOffset) / texH, (spr_y2 + norm2ActiveOffset) / texH);
+					renderer->pushQuad(vPos, uvActive, model, toFloat4(defaultTint, baseAlpha * (1.f - normalAplha)), (int)texture.getID(), zIndex);
+				}
+				else if (segment.isGuide)
+				{
+					renderer->pushQuad(vPos, uv, model, vertexColors, (int)texture.getID(), zIndex);
+				}
+				else
+				{
+					renderer->pushQuad(vPos, uv, model, toFloat4(defaultTint, baseAlpha), (int)texture.getID(), zIndex);
+				}
+				
+				// ループ終端の更新処理
+				stepTop = stepBottom;
+				stepStart_timeFrac = stepEnd_timeFrac;
+			}
 		}
 	}
-}
 
 	void ScorePreviewWindow::drawNoteBase(Renderer* renderer, const Note& note, float noteLeft, float noteRight, float y, float zScalar)
 	{

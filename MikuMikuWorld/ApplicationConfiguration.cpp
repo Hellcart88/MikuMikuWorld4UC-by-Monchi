@@ -85,6 +85,11 @@ namespace MikuMikuWorld
 			    jsonIO::tryGetValue<float>(config["timleine"], "scroll_speed_fast", 5.0f);
 
 			drawWaveform = jsonIO::tryGetValue<bool>(config["timeline"], "draw_waveform", true);
+
+			drawHiSpeedAutomation = jsonIO::tryGetValue<bool>(config["timeline"], "draw_hispeed_automation", true);
+
+			hiSpeedGraphLimit = jsonIO::tryGetValue<float>(config["timeline"], "hispeed_graph_limit", 5.0f);
+
 			returnToLastSelectedTickOnPause = jsonIO::tryGetValue<bool>(
 			    config["timeline"], "return_to_last_tick_on_pause", false);
 			cursorPositionThreshold =
@@ -178,6 +183,8 @@ namespace MikuMikuWorld
 			                   { "scroll_speed_normal", scrollSpeedNormal },
 			                   { "scroll_speed_fast", scrollSpeedShift },
 			                   { "draw_waveform", drawWaveform },
+			                   { "draw_hispeed_automation", drawHiSpeedAutomation },
+			                   { "hispeed_graph_limit", hiSpeedGraphLimit },
 			                   { "return_to_last_tick_on_pause", returnToLastSelectedTickOnPause },
 			                   { "cursor_position_threshold", cursorPositionThreshold },
 			                   { "show_tick_in_properties", showTickInProperties } };
@@ -250,6 +257,8 @@ namespace MikuMikuWorld
 		scrollSpeedShift = 5.0f;
 		cursorPositionThreshold = 0.5;
 		drawWaveform = true;
+		drawHiSpeedAutomation = true;
+		hiSpeedGraphLimit = 5.0f;
 		showTickInProperties = false;
 		followCursorInPlayback = true;
 		returnToLastSelectedTickOnPause = false;

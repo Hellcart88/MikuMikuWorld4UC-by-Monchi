@@ -92,6 +92,7 @@ lanes_opacity,レーンの不透明度
 video, 画面
 notes_se, ノーツSE
 show_tick_in_properties, プロパティにTickを表示
+draw_hispeed_automation, ハイスピードをグラフで表示
 
 # score editor
 options, オプション
@@ -200,7 +201,7 @@ decrease_note_size, ノーツの幅を狭める
 hi_speed, ハイスピード
 edit_hi_speed, ハイスピードを編集
 hi_speed_speed, ハイスピード速度
-hi_speed_skip_beat,スキップ拍数
+hi_speed_skip_beat, スキップ拍数
 hi_speed_ease, イージング
 hi_speed_ease_none, 無し
 hi_speed_ease_linear, 線形補間

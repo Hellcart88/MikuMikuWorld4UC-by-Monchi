@@ -174,6 +174,7 @@ namespace MikuMikuWorld
 		void updateScrollingPosition();
 
 		void drawWaveform(ScoreContext& context);
+		void drawHiSpeedGraph(ScoreContext& context);
 
 		void drawHoldCurve(const Note& n1, const Note& n2, EaseType ease, bool isGuide,
 		                   bool isDummy, Renderer* renderer, const Color& tint,

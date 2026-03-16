@@ -436,7 +436,11 @@ namespace MikuMikuWorld
 		}
 		for (auto& id : selectedHiSpeedChanges)
 		{
-			score.hiSpeedChanges.erase(id);
+			auto it = score.hiSpeedChanges.find(id);
+			if (it != score.hiSpeedChanges.end() && it->second.tick != 0)
+			{
+				score.hiSpeedChanges.erase(it);
+			}
 		}
 
 		selectedNotes.clear();
