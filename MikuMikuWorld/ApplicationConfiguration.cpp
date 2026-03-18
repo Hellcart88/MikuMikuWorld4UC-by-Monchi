@@ -99,6 +99,21 @@ namespace MikuMikuWorld
 			    jsonIO::tryGetValue<bool>(config["timeline"], "show_tick_in_properties", true);
 		}
 
+		if (jsonIO::keyExists(config, "preview"))
+		{
+			pvNoteSpeed = jsonIO::tryGetValue<float>(config["preview"], "note_speed", 8.5f);
+			pvMirrorScore = jsonIO::tryGetValue<bool>(config["preview"], "mirror_score", false);
+			pvDrawToolbar = jsonIO::tryGetValue<bool>(config["preview"], "draw_toolbar", true);
+			pvBackgroundBrightness = jsonIO::tryGetValue<float>(config["preview"], "background_brightness", 0.5f);
+			pvStageOpacity = jsonIO::tryGetValue<float>(config["preview"], "stage_opacity", 0.65f);
+			pvStageCover = jsonIO::tryGetValue<float>(config["preview"], "stage_cover", 0.0f);
+			pvFlickAnimation = jsonIO::tryGetValue<bool>(config["preview"], "flick_animation", true);
+			pvHoldAnimation = jsonIO::tryGetValue<bool>(config["preview"], "hold_animation", true);
+			pvSimultaneousLine = jsonIO::tryGetValue<bool>(config["preview"], "simultaneous_line", true);
+			pvHoldAlpha = jsonIO::tryGetValue<float>(config["preview"], "hold_alpha", 0.6f);
+			pvGuideAlpha = jsonIO::tryGetValue<float>(config["preview"], "guide_alpha", 0.4f);
+		}
+
 		if (jsonIO::keyExists(config, "theme"))
 		{
 			accentColor = jsonIO::tryGetValue<int>(config["theme"], "accent_color", 1);
@@ -188,6 +203,20 @@ namespace MikuMikuWorld
 			                   { "return_to_last_tick_on_pause", returnToLastSelectedTickOnPause },
 			                   { "cursor_position_threshold", cursorPositionThreshold },
 			                   { "show_tick_in_properties", showTickInProperties } };
+
+		config["preview"] = {
+			{ "note_speed", pvNoteSpeed },
+			{ "mirror_score", pvMirrorScore },
+			{ "draw_toolbar", pvDrawToolbar },
+			{ "background_brightness", pvBackgroundBrightness },
+			{ "stage_opacity", pvStageOpacity },
+			{ "stage_cover", pvStageCover },
+			{ "flick_animation", pvFlickAnimation },
+			{ "hold_animation", pvHoldAnimation },
+			{ "simultaneous_line", pvSimultaneousLine },
+			{ "hold_alpha", pvHoldAlpha },
+			{ "guide_alpha", pvGuideAlpha }
+		};
 
 		config["theme"] = { { "accent_color", accentColor },
 			                { "user_color",

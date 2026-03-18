@@ -1063,12 +1063,12 @@ namespace MikuMikuWorld
 		float speed = (hiSpeedIdx == -1 ? 1.0f : context.score.hiSpeedChanges[hiSpeedIdx].speed);
 
 		char rhythmString[256];
-		snprintf(rhythmString, sizeof(rhythmString), "%02d:%02d:%02d|%.2fs|%d/%d|%g BPM|%sx",
+		snprintf(rhythmString, sizeof(rhythmString), "%02d:%02d:%02d|%.2fs|%d/%d|%g BPM|%.2fx",
 			static_cast<int>(currentTm / 60), static_cast<int>(std::fmod(currentTm, 60.f)), static_cast<int>(std::fmod(currentTm * 100, 100.f)),
 			currentScaledTm,
 			ts.numerator, ts.denominator,
 			tempo.bpm,
-			IO::formatFixedFloatTrimmed(speed).c_str()
+			speed
 		);
 		char* str = strtok(rhythmString, "|");
 		ImGui::SetCursorPosX(toolBarWidth / 2 - ImGui::CalcTextSize(str).x / 2);

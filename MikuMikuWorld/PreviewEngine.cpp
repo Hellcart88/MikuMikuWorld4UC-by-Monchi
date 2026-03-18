@@ -34,7 +34,7 @@ namespace MikuMikuWorld
 
 namespace MikuMikuWorld::Engine
 {
-	//  ハイスピード対応の心臓部（レイヤー対応版）
+	// ハイスピード対応の心臓部（レイヤー対応・NextRUSH+互換版）
 	double accumulateScaledDuration(int tick, int beatTicks, const std::vector<Tempo>& tempos, const std::unordered_map<id_t, HiSpeedChange>& hiSpeeds, int layer)
 	{
 		// 1. unordered_mapからvectorに変換し、指定されたlayerに一致するハイスピードのみを抽出する
@@ -54,51 +54,103 @@ namespace MikuMikuWorld::Engine
 			return a.tick < b.tick;
 		});
 
-		double duration = 0.0;
+		// 2. 目標Tickまでの「境界（BPM変更点 と HS変更点）」をすべてリストアップ
+		std::vector<int> boundaries;
+		boundaries.push_back(0);
+		for (const auto& tempo : tempos) {
+			if (tempo.tick <= tick) boundaries.push_back(tempo.tick);
+		}
+		for (const auto& hs : hsList) {
+			if (hs.tick <= tick) boundaries.push_back(hs.tick);
+		}
+		boundaries.push_back(tick);
+
+		std::stable_sort(boundaries.begin(), boundaries.end());
+		boundaries.erase(std::unique(boundaries.begin(), boundaries.end()), boundaries.end());
+
+		double scaledDuration = 0.0;
 		int currentTick = 0;
-		int tempoIdx = 0;
-		int hsIdx = 0;
+		double currentTime = 0.0; // 物理時間(秒)
 
-		double currentBPM = tempos.empty() ? 120.0 : tempos[0].bpm;
-		float currentSpeed = 1.0f; 
+		int hsIdx = -1; // 現在適用されているHSのインデックス
 
-		// 2. 目標のTickに到達するまで、BPMとハイスピードの区間ごとに時間を積分する
-		while (currentTick < tick)
+		// 指定TickでのBPMを取得するヘルパー関数
+		auto getBpmAt = [&](int t) {
+			double bpm = 120.0;
+			for (auto it = tempos.rbegin(); it != tempos.rend(); ++it) {
+				if (it->tick <= t) { bpm = it->bpm; break; }
+			}
+			return bpm;
+		};
+
+		// 指定Tickの物理時間(秒)を取得するヘルパー関数
+		auto getTimeAt = [&](int t) {
+			return accumulateDuration(t, beatTicks, tempos);
+		};
+
+		// 3. 境界から境界へ、区間ごとに積分計算を進める
+		for (int nextTick : boundaries)
 		{
-			// 現在のTickに適用されるBPMを更新
-			while (tempoIdx + 1 < tempos.size() && tempos[tempoIdx + 1].tick <= currentTick)
+			// NextRUSH+移植: Skip（ワープ）の処理
+			// currentTick に到達した瞬間に、そのTickにあるHSのSkip値を加算する
+			while (hsIdx + 1 < (int)hsList.size() && hsList[hsIdx + 1].tick == currentTick)
 			{
-				tempoIdx++;
-				currentBPM = tempos[tempoIdx].bpm;
-			}
-
-			// 現在のTickに適用されるハイスピードを更新
-			while (hsIdx < hsList.size() && hsList[hsIdx].tick <= currentTick)
-			{
-				currentSpeed = hsList[hsIdx].speed;
 				hsIdx++;
+				if (hsList[hsIdx].skips != 0.0f)
+				{
+					double bpm = getBpmAt(hsList[hsIdx].tick);
+					// Skipの単位(Beat)を時間(秒)に変換して直接加算（ワープ）
+					scaledDuration += hsList[hsIdx].skips * (60.0 / bpm);
+				}
 			}
 
-			// 次にBPMかハイスピードが変化するTickを計算
-			int nextTempoTick = (tempoIdx + 1 < tempos.size()) ? tempos[tempoIdx + 1].tick : tick;
-			int nextHSTick = (hsIdx < hsList.size()) ? hsList[hsIdx].tick : tick;
+			if (nextTick == currentTick) continue;
 
-			int nextBoundary = std::min({nextTempoTick, nextHSTick, tick});
-            
-			if (nextBoundary > currentTick)
+			double nextTime = getTimeAt(nextTick);
+			double deltaTime = nextTime - currentTime;
+			double avgSpeed = 1.0;
+
+			if (hsIdx >= 0)
 			{
-				double deltaTicks = (double)(nextBoundary - currentTick);
-				// 視覚的時間を進める： (小節の割合) * (1拍あたりの秒数) * (ハイスピード倍率)
-				duration += (deltaTicks / beatTicks) * (60.0 / currentBPM) * currentSpeed;
-				currentTick = nextBoundary;
+				const auto& currentHs = hsList[hsIdx];
+				
+				// NextRUSH+移植: Linear（直線補間）の処理
+				// 次のHSが存在し、かつEaseがLinearの場合のみ台形積分を行う
+				if (currentHs.ease == HiSpeedEaseType::Linear && hsIdx + 1 < (int)hsList.size())
+				{
+					double currentHsTime = getTimeAt(currentHs.tick);
+					double nextHsTime = getTimeAt(hsList[hsIdx + 1].tick);
+					double timeDiff = nextHsTime - currentHsTime;
+
+					if (timeDiff > 1e-6)
+					{
+						// 物理時間(秒)ベースで、現在の速度と次の速度を線形補間して中間速度を算出
+						double speedAtCurrent = currentHs.speed + (hsList[hsIdx + 1].speed - currentHs.speed) * ((currentTime - currentHsTime) / timeDiff);
+						double speedAtNext = currentHs.speed + (hsList[hsIdx + 1].speed - currentHs.speed) * ((nextTime - currentHsTime) / timeDiff);
+						
+						// 台形の面積の公式（(上底＋下底)÷2）により、この区間の平均速度を求める
+						avgSpeed = (speedAtCurrent + speedAtNext) / 2.0;
+					}
+					else
+					{
+						avgSpeed = currentHs.speed;
+					}
+				}
+				else
+				{
+					// None（一定速度）、または次のHSが無い場合は開始時の速度を維持
+					avgSpeed = currentHs.speed;
+				}
 			}
-			else
-			{
-				break; // 無限ループ防止
-			}
+
+			// 仮想時間(Scaled Time)を進める：(物理経過時間) * (その区間の平均速度)
+			scaledDuration += deltaTime * avgSpeed;
+
+			currentTick = nextTick;
+			currentTime = nextTime;
 		}
 
-		return duration;
+		return scaledDuration;
 	}
 
 	Range getNoteVisualTime(Note const& note, Score const& score, float noteSpeed)

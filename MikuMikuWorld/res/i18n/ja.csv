@@ -20,6 +20,8 @@ undo, 元に戻す
 redo, やり直す
 select_all, 全て選択
 view, 表示
+tools, ツール
+tools_straighten_3d, 3D直線化
 settings, 設定
 window, ウィンドウ
 vsync, VSync（垂直同期）
@@ -93,6 +95,7 @@ video, 画面
 notes_se, ノーツSE
 show_tick_in_properties, プロパティにTickを表示
 draw_hispeed_automation, ハイスピードをグラフで表示
+hispeed_graph_limit, ハイスピードグラフの描画最大値
 
 # score editor
 options, オプション

@@ -59,6 +59,8 @@ namespace MikuMikuWorld
 		void drawToolbar();
 		void help();
 
+		void straightenHold3D(); // © ‚±‚±‚É’Ç‰ÁF3D’¼ü‰»ŠÖ”‚ÌéŒ¾
+
 		inline void loadPresets(std::string path) { presetManager.loadPresets(path); }
 		inline void savePresets(std::string path) { presetManager.savePresets(path); }
 

@@ -117,7 +117,7 @@ namespace MikuMikuWorld
 		}
 	}
 
-	void ScoreNotePropertiesWindow::update(ScoreContext& context)
+	void ScoreNotePropertiesWindow::update(ScoreContext& context, int currentDivision)
 	{
 		auto numSelected = context.selectedNotes.size() + context.selectedHiSpeedChanges.size();
 		if (numSelected == 0)
@@ -155,9 +155,21 @@ namespace MikuMikuWorld
 			UI::beginPropertyColumns();
 
 			double beat = selectedTick / static_cast<float>(TICKS_PER_BEAT);
-			if (UI::addDoubleProperty(getString("beat"), beat, "%.3f"))
+			
+			UI::propertyLabel(getString("beat"));
+			ImGui::SetNextItemWidth(-1);
+			
+			// MMWでは4分音符=1拍(Beat)として扱うため、4.0 / Division で1ステップの拍数を計算
+			double step = 4.0 / (currentDivision > 0 ? currentDivision : 4);
+			double step_fast = step * 4.0; // Shiftキーを押しながらの高速移動用
+			
+			bool beatChanged = ImGui::InputDouble(IO::concat("##", getString("beat")).c_str(), &beat, step, step_fast, "%.3f");
+			ImGui::NextColumn();
+
+			if (beatChanged)
 			{
-				auto newTick = std::floor(beat * TICKS_PER_BEAT);
+				// 浮動小数点数の微細な誤差を防ぐため floor から round に変更
+				auto newTick = std::round(beat * TICKS_PER_BEAT); 
 				for (auto& id : context.selectedNotes)
 				{
 					context.score.notes.at(id).tick = newTick;
@@ -592,9 +604,11 @@ namespace MikuMikuWorld
 				speedEdited |=
 				    UI::addSelectProperty(getString("hi_speed_ease"), ease, hiSpeedEaseNames,
 				                          arrayLength(hiSpeedEaseNames));
+
 				speedEdited |=
 				    UI::addFloatProperty(getString("hi_speed_skip_beat"), skip, 
 					IO::formatString("%%.3f %s", getString("beat")).c_str());
+
 				speedEdited |= UI::addCheckboxProperty(getString("hi_speed_hide_notes"), hideNotes);
 				UI::endPropertyColumns();
 			}

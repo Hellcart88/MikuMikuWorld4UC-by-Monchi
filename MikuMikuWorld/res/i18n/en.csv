@@ -19,6 +19,8 @@ edit,Edit
 undo,Undo
 redo,Redo
 select_all,Select All
+tools,Tools
+tools_straighten_3d,3D Straighten
 view,View
 settings,Settings
 window,Window

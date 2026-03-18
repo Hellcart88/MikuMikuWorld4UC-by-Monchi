@@ -13,6 +13,7 @@
 #include "NativeScoreSerializer.h"
 #include "UI.h"
 #include "Utilities.h"
+#include "PreviewEngine.h"
 #include <iomanip>
 #include <Windows.h>
 #include <shobjidl.h> // フォルダ選択ダイアログを使用するために追加
@@ -344,7 +345,7 @@ namespace MikuMikuWorld
 		if (ImGui::Begin(IMGUI_TITLE(ICON_FA_WRENCH, "note_properties"), NULL,
 		                 ImGuiWindowFlags_Static))
 		{
-			notePropertiesWindow.update(context);
+			notePropertiesWindow.update(context, timeline.getDivision());
 		}
 		ImGui::End();
 
@@ -661,6 +662,17 @@ namespace MikuMikuWorld
 			ImGui::EndMenu();
 		}
 
+		if (ImGui::BeginMenu(getString("tools")))
+		{
+			// 3D直線化ボタン
+			if (ImGui::MenuItem(getString("tools_straighten_3d")))
+			{
+				straightenHold3D(); // 実際の関数を呼び出す
+			}
+			
+			ImGui::EndMenu();
+		}
+
 		if (config.debugEnabled)
 		{
 			if (ImGui::BeginMenu(getString("debug")))
@@ -888,5 +900,117 @@ namespace MikuMikuWorld
 		}
 
 		return deleteCount;
+	}
+
+// ＝＝＝ ここから追加：3D直線化アルゴリズム ＝＝＝
+	void ScoreEditor::straightenHold3D()
+	{
+		if (!context.hasSelection()) return;
+
+		Score prevScore = context.score;
+
+		bool changed = false;
+		std::unordered_set<int> selected = context.selectedNotes;
+
+		// 【修正1】既存のノーツから最大のIDを探し出し、安全な新しいIDを用意する
+		int nextNoteID = 1;
+		for (const auto& pair : context.score.notes)
+		{
+			if (pair.first >= nextNoteID) nextNoteID = pair.first + 1;
+		}
+
+		for (int id : selected)
+		{
+			if (context.score.notes.find(id) == context.score.notes.end()) continue;
+			Note& note = context.score.notes.at(id);
+
+			// Holdの始点ノーツかどうかを判定
+			if (note.getType() == NoteType::Hold && context.score.holdNotes.find(id) != context.score.holdNotes.end())
+			{
+				HoldNote& hold = context.score.holdNotes.at(id);
+				if (context.score.notes.find(hold.end) == context.score.notes.end()) continue;
+				Note& endNote = context.score.notes.at(hold.end);
+
+				int tickStart = note.tick;
+				int tickEnd = endNote.tick;
+				if (tickStart >= tickEnd) continue;
+
+				// 既存の中継点を削除
+				for (const auto& step : hold.steps)
+				{
+					context.score.notes.erase(step.ID);
+				}
+				hold.steps.clear();
+
+				// 時間（Scaled Duration）の取得
+				double stm0 = Engine::accumulateScaledDuration(tickStart, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, note.layer);
+				double stm1 = Engine::accumulateScaledDuration(tickEnd, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, endNote.layer);
+				
+				float noteDuration = Engine::getNoteDuration(config.pvNoteSpeed);
+				
+				// 終点のY座標進行度を計算（始点を Y=1.0 とした相対値）
+				double y1 = std::pow(1.06, 45.0 * (stm0 - stm1) / noteDuration);
+				
+				// ゼロ除算防止（すでにパースの影響を受けない垂直な線の場合はスキップ）
+				if (std::abs(1.0 / y1 - 1.0) < 1e-6) continue;
+
+				// 左端(Lane)と右端(Lane+Width)の逆算方程式の定数 A, B を求める
+				double laneStart = note.lane;
+				double laneEnd = endNote.lane;
+				double rightStart = note.lane + note.width;
+				double rightEnd = endNote.lane + endNote.width;
+
+				double BLane = (laneEnd - laneStart) / (1.0 / y1 - 1.0);
+				double ALane = laneStart - BLane;
+
+				double BRight = (rightEnd - rightStart) / (1.0 / y1 - 1.0);
+				double ARight = rightStart - BRight;
+
+				// 【修正2】現在選択中のクオンタイズ（Division）から、打つ間隔（Tick）を自動計算する
+				int division = timeline.getDivision();
+				// 0除算防止の安全対策を入れた上で、MMWの標準計算式を適用
+				int resolution = (division > 0) ? (int)(TICKS_PER_BEAT / (division / 4.0f)) : 120;
+				if (resolution < 10) resolution = 10; // 細かすぎると重くなるため、念のための下限ストッパー
+
+				for (int t = tickStart + resolution; t < tickEnd; t += resolution)
+				{
+					double stm_mid = Engine::accumulateScaledDuration(t, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, note.layer);
+					double y_mid = std::pow(1.06, 45.0 * (stm0 - stm_mid) / noteDuration);
+					
+					float lane_mid = (float)(ALane + BLane / y_mid);
+					float right_mid = (float)(ARight + BRight / y_mid);
+					float width_mid = right_mid - lane_mid;
+
+					// 新しい中継点(Note)を生成
+					Note stepNote(NoteType::HoldMid);
+					stepNote.tick = t;
+					stepNote.lane = lane_mid;
+					stepNote.width = std::max(0.1f, width_mid); // 幅がマイナスになるのを防ぐ
+					stepNote.parentID = hold.start.ID;
+					stepNote.layer = note.layer;
+					
+					// 【修正1】安全に計算した新しいIDを付与する
+					stepNote.ID = nextNoteID++;
+					
+					context.score.notes[stepNote.ID] = stepNote;
+
+					// HoldStepとして紐付け
+					HoldStep step;
+					step.ID = stepNote.ID;
+					step.type = HoldStepType::Hidden; // 透明な中継点
+					step.ease = EaseType::Linear;
+					hold.steps.push_back(step);
+				}
+				changed = true;
+			}
+		}
+
+		if (changed)
+		{
+			context.pushHistory("3D Straighten", prevScore, context.score);
+
+			context.upToDate = false;
+			context.scorePreviewDrawData.drawingNotes.clear();
+		}
 	}
 }

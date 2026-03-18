@@ -27,7 +27,7 @@ namespace MikuMikuWorld
 	class ScoreNotePropertiesWindow
 	{
 	  public:
-		void update(ScoreContext& context);
+		void update(ScoreContext& context, int currentDivision);
 	};
 
 	class ScoreOptionsWindow
