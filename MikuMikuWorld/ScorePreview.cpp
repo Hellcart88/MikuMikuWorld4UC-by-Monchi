@@ -626,6 +626,9 @@ namespace MikuMikuWorld
 
 	for (auto& line : drawData)
 	{
+		if (context.currentTick > std::max(line.leftTick, line.rightTick))
+			continue;
+
 		double left_stm = getCachedLayerScaledTime(context, line.leftTick, line.leftLayer);
 		double right_stm = getCachedLayerScaledTime(context, line.rightTick, line.rightLayer);
 
@@ -636,11 +639,10 @@ namespace MikuMikuWorld
 		double right_progress = 1.0 - (right_stm - current_right_stm) / noteDuration;
 
 		if (left_progress < 0.0 && right_progress < 0.0) continue;
-		if (left_progress > 1.0 && right_progress > 1.0) continue;
 		if ((left_progress < 1.0 && 1.0 < right_progress) || (left_progress > 1.0 && 1.0 > right_progress)) continue;
 
-		double adj_left_progress = std::clamp(left_progress, 0.0, 1.0);
-		double adj_right_progress = std::clamp(right_progress, 0.0, 1.0);
+		double adj_left_progress = std::max(left_progress, 0.0);
+		double adj_right_progress = std::max(right_progress, 0.0);
 
 		float adj_left_lane = line.leftLane;
 		float adj_right_lane = line.rightLane;
