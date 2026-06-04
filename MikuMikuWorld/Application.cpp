@@ -318,9 +318,7 @@ namespace MikuMikuWorld
 		ResourceManager::loadTransforms(appDir + "res\\effect\\transform.txt");
 		const std::string texturesDir = appDir + "res\\textures\\";
 		ResourceManager::loadTexture(texturesDir + "stage.png");
-		ResourceManager::loadTexture(texturesDir + "notes1.png",
-		                             TextureFilterMode::LinearMipMapLinear,
-		                             TextureFilterMode::Linear);
+		ResourceManager::loadTexture(texturesDir + "notes1.png");
 		ResourceManager::loadTexture(texturesDir + "notes2.png");
 		ResourceManager::loadTexture(texturesDir + "notes3.png");
 		ResourceManager::loadTexture(texturesDir + "longNoteLine.png");

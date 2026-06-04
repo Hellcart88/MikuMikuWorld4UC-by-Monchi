@@ -61,6 +61,26 @@ namespace MikuMikuWorld
 	static const int GUIDE_Y_BOTTOM_CUTOFF = -12;
 	static Color defaultTint { 1.f, 1.f, 1.f, 1.f };
 
+	static double getCachedLayerScaledTime(const ScoreContext& context, int tick, int layer)
+	{
+		if (layer >= 0
+			&& layer < static_cast<int>(context.scorePreviewDrawData.hsCache.size())
+			&& !context.scorePreviewDrawData.hsCache[layer].nodes.empty())
+		{
+			return context.scorePreviewDrawData.hsCache[layer].getStm(tick);
+		}
+
+		return Engine::accumulateScaledDuration(tick, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, layer);
+	}
+
+	static std::vector<double> getCurrentLayerScaledTimes(const ScoreContext& context)
+	{
+		std::vector<double> layerStm(context.score.layers.size());
+		for (int i = 0; i < static_cast<int>(context.score.layers.size()); ++i)
+			layerStm[i] = getCachedLayerScaledTime(context, context.currentTick, i);
+		return layerStm;
+	}
+
 	ScorePreviewBackground::ScorePreviewBackground() : backgroundFile(), jacketFile{}, brightness(0.5f), frameBuffer{2048, 2048}, init{false} {}
 
 	ScorePreviewBackground::~ScorePreviewBackground()
@@ -548,10 +568,7 @@ namespace MikuMikuWorld
 	void ScorePreviewWindow::drawNotes(const ScoreContext& context, Renderer *renderer)
 	{
 		double current_tm = accumulateDuration(context.currentTick, TICKS_PER_BEAT, context.score.tempoChanges);
-		
-		std::vector<double> layer_stm(context.score.layers.size());
-		for (int i = 0; i < context.score.layers.size(); ++i)
-			layer_stm[i] = Engine::accumulateScaledDuration(context.currentTick, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, i);
+		const auto layer_stm = getCurrentLayerScaledTimes(context);
 
 		const auto& drawData = context.scorePreviewDrawData;
 
@@ -609,11 +626,11 @@ namespace MikuMikuWorld
 
 	for (auto& line : drawData)
 	{
-		double left_stm = Engine::accumulateScaledDuration(line.leftTick, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, line.leftLayer);
-		double right_stm = Engine::accumulateScaledDuration(line.rightTick, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, line.rightLayer);
+		double left_stm = getCachedLayerScaledTime(context, line.leftTick, line.leftLayer);
+		double right_stm = getCachedLayerScaledTime(context, line.rightTick, line.rightLayer);
 
-		double current_left_stm = Engine::accumulateScaledDuration(context.currentTick, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, line.leftLayer);
-		double current_right_stm = Engine::accumulateScaledDuration(context.currentTick, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, line.rightLayer);
+		double current_left_stm = getCachedLayerScaledTime(context, context.currentTick, line.leftLayer);
+		double current_right_stm = getCachedLayerScaledTime(context, context.currentTick, line.rightLayer);
 
 		double left_progress = 1.0 - (left_stm - current_left_stm) / noteDuration;
 		double right_progress = 1.0 - (right_stm - current_right_stm) / noteDuration;
@@ -689,10 +706,7 @@ namespace MikuMikuWorld
 	void ScorePreviewWindow::drawHoldTicks(const ScoreContext &context, Renderer *renderer)
 	{
 		if (noteTextures.notes == -1) return;
-		
-		std::vector<double> layer_stm(context.score.layers.size());
-		for (int i = 0; i < context.score.layers.size(); ++i)
-			layer_stm[i] = Engine::accumulateScaledDuration(context.currentTick, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, i);
+		const auto layer_stm = getCurrentLayerScaledTimes(context);
 
 		const float notesHeight = Engine::getNoteHeight() * 1.3f;
 		const float w = notesHeight / scaledAspectRatio;
@@ -746,10 +760,7 @@ namespace MikuMikuWorld
 		const float noteDuration = Engine::getNoteDuration(config.pvNoteSpeed);
 		const float mirror = config.pvMirrorScore ? -1 : 1;
 		const auto& drawData = context.scorePreviewDrawData;
-	
-		std::vector<double> layer_stm(context.score.layers.size());
-		for (int i = 0; i < context.score.layers.size(); ++i)
-			layer_stm[i] = Engine::accumulateScaledDuration(context.currentTick, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, i);
+		const auto layer_stm = getCurrentLayerScaledTimes(context);
 	
 		for (auto& segment : drawData.drawingHoldSegments)
 		{
@@ -1254,7 +1265,7 @@ namespace MikuMikuWorld
 		
 		//  ツールバーの表示用には、現在選択されているレイヤーの視覚的時間を用いる
 		int currentLayer = std::clamp(context.selectedLayer, 0, (int)context.score.layers.size() - 1);
-		double currentScaledTm = Engine::accumulateScaledDuration(context.currentTick, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, currentLayer);
+		double currentScaledTm = getCachedLayerScaledTime(context, context.currentTick, currentLayer);
 		int currentMeasure = accumulateMeasures(context.currentTick, TICKS_PER_BEAT, context.score.timeSignatures);
 		const TimeSignature& ts = context.score.timeSignatures[findTimeSignature(currentMeasure, context.score.timeSignatures)];
 		const Tempo& tempo = getTempoAt(context.currentTick, context.score.tempoChanges);
