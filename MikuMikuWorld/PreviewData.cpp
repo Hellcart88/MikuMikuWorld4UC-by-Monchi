@@ -75,7 +75,7 @@ namespace MikuMikuWorld::Engine
 				}
 			}
 
-			this->noteSpeed = 10.0f;
+			this->noteSpeed = config.pvNoteSpeed;
 
 			// =========================================================================
 			// 【変更】同じTickに存在するノーツの <中心X座標, レイヤー> のリストを保持する

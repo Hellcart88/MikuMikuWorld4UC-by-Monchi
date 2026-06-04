@@ -347,7 +347,12 @@ namespace MikuMikuWorld
 		renderer->beginBatch();
 		drawLines(context, renderer);
 		drawHoldCurves(context, renderer);
-		renderer->endBatch(); 
+		if (config.pvStageCover != 0) {
+			drawStageCoverMask(renderer);
+			renderer->endBatchWithDepthTest(GL_LEQUAL);
+		}
+		else
+			renderer->endBatch();
 
 		pteShader->use();
 		pteShader->setMatrix4("projection", pProjection);
@@ -365,8 +370,11 @@ namespace MikuMikuWorld
 		if (config.pvStageCover != 0) {
 			drawStageCoverMask(renderer);
 			drawStageCover(renderer);
+			drawStageCoverDecoration(renderer);
+			renderer->endBatchWithDepthTest(GL_LEQUAL);
 		}
-		renderer->endBatch();
+		else
+			renderer->endBatch();
 
 		pteShader->use();
 		pteShader->setMatrix4("projection", pProjection);
@@ -515,7 +523,27 @@ namespace MikuMikuWorld
 		renderer->pushQuad(vPos, uv, model, DirectX::XMFLOAT4(0, 0, 0, config.pvStageOpacity), (int)stage.getID(), 0);
 	}
 
-	void ScorePreviewWindow::drawStageCoverDecoration(Renderer *renderer) {}
+	void ScorePreviewWindow::drawStageCoverDecoration(Renderer *renderer)
+	{
+		if (noteTextures.notes == -1)
+			return;
+
+		constexpr float stageTop = Engine::STAGE_LANE_TOP / Engine::STAGE_LANE_HEIGHT;
+		const Texture& noteTex = getNoteTexture();
+		size_t sprIndex = SPR_SIMULTANEOUS_CONNECTION;
+		size_t transIndex = static_cast<size_t>(SpriteType::SimultaneousLine);
+		if (!isArrayIndexInBounds(sprIndex, noteTex.sprites)) return;
+		if (!isArrayIndexInBounds(transIndex, ResourceManager::spriteTransforms)) return;
+
+		const SpriteTransform& lineTransform = ResourceManager::spriteTransforms[transIndex];
+		const Sprite& sprite = noteTex.sprites[sprIndex];
+		float x = 0.12f * (1.f - config.pvStageCover);
+		auto vPos = lineTransform.apply(Engine::perspectiveQuadvPos(-6.f - x, 6.f + x, 1.f + Engine::getNoteHeight(), 1.f - Engine::getNoteHeight()));
+		float y = stageTop + config.pvStageCover * (1.f - stageTop);
+		auto uv = Engine::quadUV(sprite, noteTex);
+		auto model = DirectX::XMMatrixScaling(y, y, 1.f);
+		renderer->pushQuad(vPos, uv, model, toFloat4(defaultTint, config.pvStageOpacity), (int)noteTex.getID(), -1);
+	}
 
 	void ScorePreviewWindow::drawNotes(const ScoreContext& context, Renderer *renderer)
 	{
