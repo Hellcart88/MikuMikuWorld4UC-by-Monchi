@@ -8,7 +8,7 @@
 #include "NoteTypes.h"
 #include <vector>
 
-#define APP_NAME "MikuMikuWorld for UntitledCharts"
+#define APP_NAME "MikuMikuWorld for UntitledCharts by Monchi"
 
 #define IMGUI_TITLE(icon, title)                                                                   \
 	IO::formatString("%s %s###%s", icon, getString(title), title).c_str()
@@ -109,6 +109,7 @@ namespace MikuMikuWorld
 		static void endNextItemDisabled();
 
 		static void setWindowTitle(std::string title);
+		static void setDarkMode(bool enabled);
 		static void updateBtnSizesDpiScaling(float scale);
 
 		template <typename T> static void addReadOnlyProperty(const char* label, T val)

@@ -48,6 +48,7 @@ namespace MikuMikuWorld
 			return result;
 
 		imgui->setBaseTheme(config.baseTheme);
+		UI::setDarkMode(config.baseTheme == BaseTheme::DARK);
 		imgui->applyAccentColor(config.accentColor);
 
 		loadResources();
@@ -218,7 +219,10 @@ namespace MikuMikuWorld
 			imgui->applyAccentColor(config.accentColor);
 
 		if (config.baseTheme != imgui->getBaseTheme())
+		{
 			imgui->setBaseTheme(config.baseTheme);
+			UI::setDarkMode(config.baseTheme == BaseTheme::DARK);
+		}
 
 		if ((windowState.closing || windowState.resetting) && !editor->isUpToDate() &&
 		    !unsavedChangesDialog.open)

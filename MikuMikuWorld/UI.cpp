@@ -8,6 +8,15 @@
 #include <algorithm>
 #include <GLFW/glfw3.h>
 
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
+
+#include <Windows.h>
+#include <dwmapi.h>
+
+#undef min
+#undef max
+
 namespace MikuMikuWorld
 {
 	const ImVec2 UI::_btnNormal{ 24, 24 };
@@ -458,6 +467,18 @@ namespace MikuMikuWorld
 			return;
 
 		glfwSetWindowTitle(window, IO::formatString("%s - %s", APP_NAME, title.c_str()).c_str());
+	}
+
+	void UI::setDarkMode(bool enabled)
+	{
+		GLFWwindow* window = glfwGetCurrentContext();
+		if (!window)
+			return;
+
+		HWND hwnd = glfwGetWin32Window(window);
+		BOOL isDarkMode = enabled;
+		::DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &isDarkMode,
+		                        sizeof(isDarkMode));
 	}
 
 	void UI::updateBtnSizesDpiScaling(float scale)
