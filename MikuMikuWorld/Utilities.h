@@ -3,6 +3,7 @@
 #include <vector>
 #include <algorithm>
 #include "ImGui/imgui_internal.h"
+#include <random>
 #include <type_traits>
 
 // Macro to allow usage of flags operators with types enums
@@ -55,6 +56,34 @@ namespace MikuMikuWorld
 		static void ImGuiCenteredText(const std::string& str);
 		static void ImGuiCenteredText(const char* str);
 	};
+
+	class Random
+	{
+	public:
+		float get(float min, float max);
+		float get();
+		void setSeed(int seed);
+
+	private:
+		std::linear_congruential_engine<uint32_t, 1812433253U, 367, 2147483647> gen;
+		std::uniform_real_distribution<> dist{ 0, 1 };
+	};
+
+	class RandN
+	{
+	public:
+		float nextFloat();
+		float nextFloatRange(float min, float max);
+		uint32_t nextUInt32();
+		void setSeed(uint32_t seed);
+
+	private:
+		static const uint32_t MT19937 = 1812433253;
+		uint32_t x{}, y{}, z{}, w{};
+		uint32_t xorShift();
+	};
+
+	extern Random globalRandom;
 
 	enum class ResultStatus
 	{

@@ -394,8 +394,10 @@ namespace MikuMikuWorld
 				}
 
 				if (hold.start.ID == 0 || hold.end == 0)
-					throw std::runtime_error("Invalid hold note");
-
+				{
+					// throw std::runtime_error("Invalid hold note");
+					continue;
+				}
 				holds[startID] = hold;
 			}
 		};

@@ -24,6 +24,45 @@ namespace MikuMikuWorld
 		inline operator ImVec2() const { return { x, y }; }
 	};
 
+	struct Vector3
+	{
+		float x;
+		float y;
+		float z;
+
+		Vector3(float _x, float _y, float _z) : x{ _x }, y{ _y }, z{ _z } {}
+		Vector3() : x{ 0 }, y{ 0 }, z{ 0 } {}
+
+		Vector3 operator+(const Vector3& v) const { return Vector3(x + v.x, y + v.y, z + v.z); }
+		Vector3 operator-(const Vector3& v) const { return Vector3(x - v.x, y - v.y, z - v.z); }
+		Vector3 operator*(const Vector3& v) const { return Vector3(x * v.x, y * v.y, z * v.z); }
+		Vector3 operator*(float mult) const { return Vector3(x * mult, y * mult, z * mult); }
+
+		Vector3& operator*=(const Vector3& v)
+		{
+			x *= v.x;
+			y *= v.y;
+			z *= v.z;
+			return *this;
+		}
+
+		Vector3& operator*=(float factor)
+		{
+			x *= factor;
+			y *= factor;
+			z *= factor;
+			return *this;
+		}
+
+		Vector3& operator+=(const Vector3& v)
+		{
+			x += v.x;
+			y += v.y;
+			z += v.z;
+			return *this;
+		}
+	};
+
 	struct Color
 	{
 	  public:
@@ -34,12 +73,12 @@ namespace MikuMikuWorld
 		{
 		}
 
-		inline bool operator==(const Color& c)
+		inline bool operator==(const Color& c) const
 		{
 			return r == c.r && g == c.g && b == c.b && a == c.a;
 		}
-		inline bool operator!=(const Color& c) { return !(*this == c); }
-		inline Color operator*(const Color& c)
+		inline bool operator!=(const Color& c) const { return !(*this == c); }
+		inline Color operator*(const Color& c) const
 		{
 			return Color{ r * c.r, g * c.g, b * c.b, a * c.a };
 		}
@@ -66,6 +105,15 @@ namespace MikuMikuWorld
 				          start.a + (end.a - start.a) * ratio };
 		}
 	};
+
+	struct Range
+	{
+		double min;
+		double max;
+	};
+
+	constexpr float NUM_PI = 3.14159265358979323846f;
+	constexpr float NUM_PI_2 = 1.57079632679489661923f;
 
 	constexpr uint32_t roundUpToPowerOfTwo(uint32_t v)
 	{

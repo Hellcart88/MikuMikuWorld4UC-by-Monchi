@@ -1,21 +1,14 @@
-#pragma once
+﻿#pragma once
 #include <random>
 #include "Score.h"
 #include "Math.h"
-// #include "EffectView.h" <- 削除しました
+#include "EffectView.h"
 
 namespace MikuMikuWorld
 {
 	struct Score;
 	struct Note;
 	struct ScoreContext;
-
-	// MMW4UCで削除されたRange構造体をプレビューエンジン用に再定義
-	struct Range
-	{
-		double min;
-		double max;
-	};
 }
 
 namespace MikuMikuWorld::Engine
@@ -29,7 +22,7 @@ namespace MikuMikuWorld::Engine
 		int layer;
 	};
 
-	// 【修正版】実機仕様に合わせた同時押し線のデータ構造
+	// 縲蝉ｿｮ豁｣迚医大ｮ滓ｩ滉ｻ墓ｧ倥↓蜷医ｏ縺帙◆蜷梧凾謚ｼ縺礼ｷ壹・繝・・繧ｿ讒矩
 	struct DrawingLine
 	{
 		int leftTick;
@@ -55,9 +48,9 @@ namespace MikuMikuWorld::Engine
 		int endID;
 		EaseType ease;
 		bool isGuide;
-		GuideColor color; // 追加: ガイド線の色
-		bool dummy;       // 追加
-		int layer;        // 追加
+		GuideColor color; // 霑ｽ蜉: 繧ｬ繧､繝臥ｷ壹・濶ｲ
+		bool dummy;       // 霑ｽ蜉
+		int layer;        // 霑ｽ蜉
 
 		ptrdiff_t tailStepIndex;
 		double headTime, tailTime;
@@ -94,7 +87,7 @@ namespace MikuMikuWorld::Engine
 
 		std::vector<LayerHiSpeedCache> hsCache;
 
-		// Effect::EffectView effectView; <- 削除しました
+		Effect::EffectView effectView;
 
 		void clear();
 		void calculateDrawData(Score const& score);

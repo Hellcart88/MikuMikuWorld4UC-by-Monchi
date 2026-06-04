@@ -3,6 +3,7 @@
 #include "ImGui/imgui.h"
 #include "Localization.h"
 #include "IO.h"
+#include "Math.h"
 #include <Windows.h>
 #include <ctime>
 #include <vector>
@@ -75,6 +76,56 @@ namespace MikuMikuWorld
 		ImGui::SetCursorPosX((ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(str).x) *
 		                     0.5f);
 		ImGui::Text(str);
+	}
+
+	Random globalRandom{};
+
+	float Random::get(float min, float max)
+	{
+		float factor = dist(gen);
+		return lerp(min, max, factor);
+	}
+
+	float Random::get()
+	{
+		return dist(gen);
+	}
+
+	void Random::setSeed(int seed)
+	{
+		gen.seed(seed);
+	}
+
+	uint32_t RandN::xorShift()
+	{
+		uint32_t t = x ^ (x << 11);
+		x = y;
+		y = z;
+		z = w;
+		return w = w ^ (w >> 19) ^ t ^ (t >> 8);
+	}
+
+	uint32_t RandN::nextUInt32()
+	{
+		return xorShift();
+	}
+
+	float RandN::nextFloat()
+	{
+		return 1.0f - nextFloatRange(0.0f, 1.0f);
+	}
+
+	float RandN::nextFloatRange(float min, float max)
+	{
+		return (min - max) * (static_cast<float>(xorShift() << 9) / 0xFFFFFFFF) + max;
+	}
+
+	void RandN::setSeed(uint32_t seed)
+	{
+		x = seed;
+		y = MT19937 * x + 1;
+		z = MT19937 * y + 1;
+		w = MT19937 * z + 1;
 	}
 
 	void drawShadedText(ImDrawList* drawList, ImVec2 textPos, float fontSize, ImU32 fontColor,

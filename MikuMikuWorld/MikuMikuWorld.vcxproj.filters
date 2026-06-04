@@ -167,6 +167,12 @@
     <ClCompile Include="PreviewEngine.cpp" />
     <ClCompile Include="ScorePreview.cpp" />
     <ClCompile Include="MinMax.cpp" />
+    <ClCompile Include="Particle.cpp">
+      <Filter>ScorePreview\Effects</Filter>
+    </ClCompile>
+    <ClCompile Include="EffectView.cpp">
+      <Filter>ScorePreview\Effects</Filter>
+    </ClCompile>
     <ClCompile Include="ChartGalleryWindow.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -368,6 +374,12 @@
     <ClInclude Include="ScorePreview.h" />
     <ClInclude Include="ImageCrop.h" />
     <ClInclude Include="MinMax.h" />
+    <ClInclude Include="Particle.h">
+      <Filter>ScorePreview\Effects</Filter>
+    </ClInclude>
+    <ClInclude Include="EffectView.h">
+      <Filter>ScorePreview\Effects</Filter>
+    </ClInclude>
     <ClInclude Include="ChartGalleryWindow.h" />
   </ItemGroup>
   <ItemGroup>
@@ -427,6 +439,12 @@
     </Filter>
     <Filter Include="Score\Serialization">
       <UniqueIdentifier>{30a99260-30fa-4a6e-a1a6-e51bb946a0e0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ScorePreview">
+      <UniqueIdentifier>{b2e37fa4-b250-4e59-89d0-131b15a9423e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ScorePreview\Effects">
+      <UniqueIdentifier>{0d3f066b-bb83-429d-9f38-54da9b01145b}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

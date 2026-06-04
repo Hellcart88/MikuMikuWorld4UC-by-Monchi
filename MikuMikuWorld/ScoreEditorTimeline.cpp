@@ -3154,9 +3154,16 @@ namespace MikuMikuWorld
 				playSE = context.score.holdNotes.at(note.ID).startType == HoldNoteType::Normal;
 			}
 			else if (note.getType() == NoteType::HoldEnd)
-			{
-				playSE = context.score.holdNotes.at(note.parentID).endType == HoldNoteType::Normal;
-			}
+            {
+                if (context.score.holdNotes.find(note.parentID) != context.score.holdNotes.end()) 
+                {
+                    playSE = context.score.holdNotes.at(note.parentID).endType == HoldNoteType::Normal;
+                }
+                else 
+                {
+                    playSE = false;
+                }
+            }
 			if (note.dummy)
 			{
 				playSE = false;

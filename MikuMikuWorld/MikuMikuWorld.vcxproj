@@ -198,6 +198,8 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Math.cpp" />
     <ClCompile Include="MinMax.cpp" />
+    <ClCompile Include="Particle.cpp" />
+    <ClCompile Include="EffectView.cpp" />
     <ClCompile Include="NativeScoreSerializer.cpp" />
     <ClCompile Include="Note.cpp" />
     <ClCompile Include="OpenGlLoader.cpp" />
@@ -266,6 +268,8 @@
     <ClInclude Include="Math.h" />
     <ClInclude Include="Audio\miniaudio.h" />
     <ClInclude Include="MinMax.h" />
+    <ClInclude Include="Particle.h" />
+    <ClInclude Include="EffectView.h" />
     <ClInclude Include="NativeScoreSerializer.h" />
     <ClInclude Include="Note.h" />
     <ClInclude Include="NoteTypes.h" />

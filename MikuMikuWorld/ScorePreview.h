@@ -40,6 +40,7 @@ namespace MikuMikuWorld
 	{
 		Framebuffer previewBuffer;
 		ScorePreviewBackground background;
+		Camera noteEffectsCamera;
 		float scaledAspectRatio;
 
 		mutable bool fullWindow{};
@@ -70,6 +71,7 @@ namespace MikuMikuWorld
 		void drawStage(Renderer* renderer);
 		void drawStageCover(Renderer* renderer);
 		void drawStageCoverDecoration(Renderer* renderer);
+		void loadNoteEffects(Effect::EffectView& effectView);
 
 		void setFullWindow(bool fullScreen);
 		

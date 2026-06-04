@@ -3,6 +3,7 @@
 #include "PreviewEngine.h"
 #include "Rendering/Camera.h"
 #include "ResourceManager.h"
+#include "IO.h"
 #include "Colors.h"
 #include "ImageCrop.h"
 #include "ApplicationConfiguration.h"
@@ -109,7 +110,94 @@ namespace MikuMikuWorld
 		backgroundTex.dispose();
 	}
 
-	void ScorePreviewBackground::updateDrawDefaultJacket(Renderer* renderer, const Jacket& jacket) {}
+	void ScorePreviewBackground::updateDrawDefaultJacket(Renderer* renderer, const Jacket& jacket)
+	{
+		if (jacket.getFilename().empty())
+			return;
+
+		int index = ResourceManager::getTexture("stage");
+		if (index == -1)
+			return;
+
+		const Texture& stage = ResourceManager::textures[index];
+		if (stage.sprites.size() < STAGE_SPR_COUNT)
+			return;
+
+		int shaderId;
+		if ((shaderId = ResourceManager::getShader("basic2d")) == -1)
+			return;
+		Shader* basicShader = ResourceManager::shaders[shaderId];
+
+		if ((shaderId = ResourceManager::getShader("masking")) == -1)
+			return;
+		Shader* maskShader = ResourceManager::shaders[shaderId];
+
+		const DirectX::XMFLOAT4 defCol{ 1.f, 1.f, 1.f, 1.f };
+		const DirectX::XMFLOAT4 mainCol{ 1.f, 1.f, 1.f, 0.65f };
+		const DirectX::XMFLOAT4 mirrorCol{ 1.f, 1.f, 1.f, 0.35f };
+
+		auto mainLeftPos = Engine::quadvPos(602.f, 602.f + 264.f, 816.f, 816.f + 174.f);
+		auto mainRightPos = Engine::quadvPos(1205.f, 1205.f + 200.f, 629.f, 629.f + 114.f);
+		auto mirrorLeftPos = Engine::quadvPos(615.f, 615.f + 256.f, 1170.f, 1170.f + 162.f);
+		auto mirrorRightPos = Engine::quadvPos(1186.f, 1186.f + 196.f, 1387.f, 1387.f + 105.f);
+
+		auto mainLeftMask = Engine::quadUV(stage.sprites[SPR_JACKET_LEFT_MASK], stage);
+		auto mainRightMask = Engine::quadUV(stage.sprites[SPR_JACKET_RIGHT_MASK], stage);
+		auto mirrorLeftMask = Engine::quadUV(stage.sprites[SPR_MIRROR_JACKET_LEFT_MASK], stage);
+		auto mirrorRightMask = Engine::quadUV(stage.sprites[SPR_MIRROR_JACKET_RIGHT_MASK], stage);
+
+		maskShader->use();
+		maskShader->setInt("baseTex", 0);
+		maskShader->setInt("maskTex", 1);
+		maskShader->setMatrix4("projection", Camera().getOffCenterOrthographicProjection(0.f, 2048.f, 0.f, 2048.f));
+		renderer->pushQuadMasked(mainLeftPos, DefaultJacket::getLeftUV(), mainLeftMask, mainCol, jacket.getTexID(), stage.getID());
+		renderer->pushQuadMasked(mainRightPos, DefaultJacket::getRightUV(), mainRightMask, mainCol, jacket.getTexID(), stage.getID());
+		renderer->pushQuadMasked(mirrorLeftPos, DefaultJacket::getLeftMirrorUV(), mirrorLeftMask, mirrorCol, jacket.getTexID(), stage.getID());
+		renderer->pushQuadMasked(mirrorRightPos, DefaultJacket::getRightMirrorUV(), mirrorRightMask, mirrorCol, jacket.getTexID(), stage.getID());
+
+		basicShader->use();
+		basicShader->setMatrix4("projection", Camera().getOffCenterOrthographicProjection(0.f, 2048.f, 0.f, 2048.f));
+		renderer->beginBatch();
+		renderer->pushQuad(mainLeftPos, mainLeftMask, DirectX::XMMatrixIdentity(), defCol, stage.getID(), 0);
+		renderer->pushQuad(mainRightPos, mainRightMask, DirectX::XMMatrixIdentity(), defCol, stage.getID(), 0);
+		renderer->pushQuad(mirrorLeftPos, mirrorLeftMask, DirectX::XMMatrixIdentity(), defCol, stage.getID(), 0);
+		renderer->pushQuad(mirrorRightPos, mirrorRightMask, DirectX::XMMatrixIdentity(), defCol, stage.getID(), 0);
+
+		const Sprite* sprite = &stage.sprites[SPR_JACKET_WINDOW];
+		renderer->drawRectangle(Vector2(682.f, 497.f), Vector2(686.f, 686.f), stage,
+		                        sprite->getX(), sprite->getX() + sprite->getWidth(),
+		                        sprite->getY(), sprite->getY() + sprite->getHeight(), defaultTint, 1);
+
+		sprite = &stage.sprites[SPR_MIRROR_JACKET_WINDOW];
+		renderer->drawRectangle(Vector2(699.f, 958.f), Vector2(651.f, 650.f), stage,
+		                        sprite->getX(), sprite->getX() + sprite->getWidth(),
+		                        sprite->getY(), sprite->getY() + sprite->getHeight(),
+		                        Color(defaultTint.r, defaultTint.g, defaultTint.b, defaultTint.a * 0.6f), 1);
+		renderer->endBatch();
+
+		auto mainWindowPos = Engine::quadvPos(824.f, 824.f + 400.f, 666.f, 666.f + 384.f);
+		auto mainWindowMask = Engine::quadUV(stage.sprites[SPR_JACKET_MASK], stage);
+		auto mirrorWindowPos = Engine::quadvPos(834.f, 834.f + 386.f, 1120.f, 1120.f + 336.f);
+		auto mirrorWindowMask = Engine::quadUV(stage.sprites[SPR_MIRROR_JACKET_MASK], stage);
+
+		maskShader->use();
+		renderer->pushQuadMasked(mainWindowPos, DefaultJacket::getCenterUV(), mainWindowMask,
+		                         { 1.f, 1.f, 1.f, 0.8f }, jacket.getTexID(), stage.getID());
+		renderer->pushQuadMasked(mirrorWindowPos, DefaultJacket::getMirrorCenterUV(), mirrorWindowMask,
+		                         { 1.f, 1.f, 1.f, 0.5f }, jacket.getTexID(), stage.getID());
+
+		basicShader->use();
+		renderer->beginBatch();
+		renderer->pushQuad(mainWindowPos, mainWindowMask, DirectX::XMMatrixIdentity(), defCol, stage.getID(), 0);
+		renderer->pushQuad(mirrorWindowPos, mirrorWindowMask, DirectX::XMMatrixIdentity(), defCol, stage.getID(), 0);
+
+		sprite = &stage.sprites[SPR_SEKAI_FLOOR];
+		renderer->drawRectangle(Vector2(0.f, 1251.f), Vector2(sprite->getWidth(), sprite->getHeight()), stage,
+		                        sprite->getX(), sprite->getX() + sprite->getWidth(),
+		                        sprite->getY(), sprite->getY() + sprite->getHeight(),
+		                        Color(defaultTint.r, defaultTint.g, defaultTint.b, defaultTint.a * 0.8f), 1);
+		renderer->endBatch();
+	}
 
 	bool ScorePreviewBackground::shouldUpdate(const Jacket& jacket) const
 	{
@@ -150,7 +238,13 @@ namespace MikuMikuWorld
 	std::array<DirectX::XMFLOAT4, 4> ScorePreviewBackground::DefaultJacket::getCenterUV() { return {{ { 755.541687f / 740, 744.057861f / 740, 0, 0 }, { 739.961182f / 740, -1.859504f / 740, 0, 0 }, { 0.043696f / 740, -1.859504f / 740, 0, 0 }, { -17.484388f / 740, 744.057861f / 740, 0, 0 } }}; }
 	std::array<DirectX::XMFLOAT4, 4> ScorePreviewBackground::DefaultJacket::getMirrorCenterUV() { return {{ { 747.697083f / 740, 2.164453f / 740, 0, 0 }, { 743.909424f / 740, 731.297241f / 740, 0, 0 }, { -1.864066f / 740, 731.297241f / 740, 0, 0 }, { 3.837242f / 740, 2.164453f / 740, 0, 0 } }}; }
 
-	ScorePreviewWindow::ScorePreviewWindow() : previewBuffer{ 1920, 1080 }, background(), scaledAspectRatio(1) {}
+	ScorePreviewWindow::ScorePreviewWindow() : previewBuffer{ 1920, 1080 }, background(), scaledAspectRatio(1)
+	{
+		noteEffectsCamera.setFov(50.f);
+		noteEffectsCamera.setRotation(-90.f, 27.1f);
+		noteEffectsCamera.setPosition({ 0, 5.32f, -5.86f, 0 });
+		noteEffectsCamera.positionCamNormal();
+	}
 
 	ScorePreviewWindow::~ScorePreviewWindow() {}
 
@@ -196,10 +290,20 @@ namespace MikuMikuWorld
 		if (config.drawBackground && background.shouldUpdate(context.workingData.jacket))
 			background.update(renderer, context.workingData.jacket);
 
+		if (!context.scorePreviewDrawData.effectView.isInitialized())
+			context.scorePreviewDrawData.effectView.init();
+
+		if (playbackState.isPlaying)
+			context.scorePreviewDrawData.effectView.update(context);
+		else if (playbackState.wasLastFramePlaying)
+			context.scorePreviewDrawData.effectView.reset();
+
 		static int shaderId = ResourceManager::getShader("basic2d");
-		if (shaderId == -1) return;
+		static int pteShaderId = ResourceManager::getShader("particles");
+		if (shaderId == -1 || pteShaderId == -1) return;
 
 		Shader* shader = ResourceManager::shaders[shaderId];
+		Shader* pteShader = ResourceManager::shaders[pteShaderId];
 		shader->use();
 
 		float width  = size.x, height = size.y;
@@ -208,13 +312,19 @@ namespace MikuMikuWorld
 		float scrTop  = Engine::STAGE_TARGET_HEIGHT * Engine::STAGE_TOP_RATIO;
 		Utils::fillRect(Engine::STAGE_TARGET_WIDTH, Engine::STAGE_TARGET_HEIGHT, size.x / size.y, width, height);
 		
+		float aspectRatio = width / height;
 		scaledAspectRatio = scaledWidth / scaledHeight;
 
 		auto view = DirectX::XMMatrixScaling(scaledWidth, scaledHeight, 1.f) * DirectX::XMMatrixTranslation(0.f, -scrTop, 0.f);
 		auto projection = Camera().getOffCenterOrthographicProjection(-width / 2, width / 2, height / 2, -height / 2);
 		auto viewProjection = DirectX::XMMatrixMultiply(view, projection); 
+		const auto pView = noteEffectsCamera.getViewMatrix();
+		auto pProjection = noteEffectsCamera.getProjectionMatrix(aspectRatio, 0.3f, 1000.f);
+		float projectionScale = std::min(aspectRatio / EFFECTS_TARGET_ASPECT, 1.f);
+		pProjection = DirectX::XMMatrixScaling(projectionScale, -projectionScale, 1.f) * pProjection;
 
 		shader->setMatrix4("projection", viewProjection);
+		float currentTime = context.getTimeAtCurrentTick();
 
 		if (previewBuffer.getWidth() != (unsigned int)size.x || previewBuffer.getHeight() != (unsigned int)size.y)
 			previewBuffer.resize((unsigned int)size.x, (unsigned int)size.y);
@@ -230,12 +340,21 @@ namespace MikuMikuWorld
 		drawStage(renderer);
 		renderer->endBatch();
 
+		context.scorePreviewDrawData.effectView.updateEffects(context, noteEffectsCamera, currentTime);
+
 		shader->use();
 		shader->setMatrix4("projection", viewProjection);
 		renderer->beginBatch();
 		drawLines(context, renderer);
 		drawHoldCurves(context, renderer);
 		renderer->endBatch(); 
+
+		pteShader->use();
+		pteShader->setMatrix4("projection", pProjection);
+		pteShader->setMatrix4("view", pView);
+		renderer->beginBatch();
+		context.scorePreviewDrawData.effectView.drawUnderNoteEffects(renderer, currentTime);
+		renderer->endBatchWithBlending(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
 		shader->use();
 		shader->setMatrix4("projection", viewProjection);
@@ -248,6 +367,13 @@ namespace MikuMikuWorld
 			drawStageCover(renderer);
 		}
 		renderer->endBatch();
+
+		pteShader->use();
+		pteShader->setMatrix4("projection", pProjection);
+		pteShader->setMatrix4("view", pView);
+		renderer->beginBatch();
+		context.scorePreviewDrawData.effectView.drawEffects(renderer, currentTime);
+		renderer->endBatchWithBlending(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		
@@ -284,6 +410,48 @@ namespace MikuMikuWorld
 	void ScorePreviewWindow::setFullWindow(bool _fullWindow)
 	{
 		fullWindow = _fullWindow;
+	}
+
+	void ScorePreviewWindow::loadNoteEffects(Effect::EffectView& effectView)
+	{
+		int oldProfile = config.pvEffectsProfile == 1 ? 0 : 1;
+		const std::string oldEffectsDir = Application::getAppDir() + "res\\effect\\" + std::to_string(oldProfile) + "\\";
+		const std::string effectsDir = Application::getAppDir() + "res\\effect\\" + std::to_string(config.pvEffectsProfile) + "\\";
+		size_t effectCount = arrayLength(Effect::effectNames);
+
+		ResourceManager::removeAllParticleEffects();
+		int texIndex = ResourceManager::getTextureByFilename(oldEffectsDir + "tex_note_common_all_v2.png");
+		if (texIndex > -1)
+			ResourceManager::disposeTexture(ResourceManager::textures[texIndex].getID());
+
+		ResourceManager::loadTexture(effectsDir + "tex_note_common_all_v2.png");
+
+		std::vector<std::string> failedParticleFiles;
+		for (size_t i = 0; i < effectCount; i++)
+		{
+			const std::string filename{ effectsDir + Effect::effectNames[i] + ".json" };
+			int particleId = ResourceManager::loadParticleEffect(filename);
+			if (particleId == -1)
+				failedParticleFiles.push_back(filename);
+		}
+
+		if (!failedParticleFiles.empty())
+		{
+			std::string fullErrorMessage = "Failed to load the following note effects: \n\n";
+			for (const auto& error : failedParticleFiles)
+				fullErrorMessage.append(error).append("\n");
+
+			IO::messageBox(
+				APP_NAME,
+				fullErrorMessage,
+				IO::MessageBoxButtons::Ok,
+				IO::MessageBoxIcon::Warning,
+				Application::windowState.windowHandle
+			);
+		}
+
+		effectView.reset();
+		effectView.init();
 	}
 
 	const Texture &ScorePreviewWindow::getNoteTexture()

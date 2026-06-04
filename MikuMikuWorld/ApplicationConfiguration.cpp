@@ -107,6 +107,7 @@ namespace MikuMikuWorld
 			pvBackgroundBrightness = jsonIO::tryGetValue<float>(config["preview"], "background_brightness", 0.5f);
 			pvStageOpacity = jsonIO::tryGetValue<float>(config["preview"], "stage_opacity", 0.65f);
 			pvStageCover = jsonIO::tryGetValue<float>(config["preview"], "stage_cover", 0.0f);
+			pvEffectsProfile = jsonIO::tryGetValue<int>(config["preview"], "effects_profile", 0);
 			pvFlickAnimation = jsonIO::tryGetValue<bool>(config["preview"], "flick_animation", true);
 			pvHoldAnimation = jsonIO::tryGetValue<bool>(config["preview"], "hold_animation", true);
 			pvSimultaneousLine = jsonIO::tryGetValue<bool>(config["preview"], "simultaneous_line", true);
@@ -212,6 +213,7 @@ namespace MikuMikuWorld
 			{ "background_brightness", pvBackgroundBrightness },
 			{ "stage_opacity", pvStageOpacity },
 			{ "stage_cover", pvStageCover },
+			{ "effects_profile", pvEffectsProfile },
 			{ "flick_animation", pvFlickAnimation },
 			{ "hold_animation", pvHoldAnimation },
 			{ "simultaneous_line", pvSimultaneousLine },

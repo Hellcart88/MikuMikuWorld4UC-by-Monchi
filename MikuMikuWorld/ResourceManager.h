@@ -1,15 +1,20 @@
-﻿#pragma once
-#include <vector>
+#pragma once
+#include <map>
 #include <string>
+#include <vector>
+#include <json.hpp>
+#include "Particle.h"
 #include "Rendering/Texture.h"
 #include "Rendering/Shader.h"
-#include "PreviewEngine.h" // SpriteTransformのために必要
+#include "PreviewEngine.h"
 
 namespace MikuMikuWorld
 {
+	typedef std::map<int, Effect::Particle> ParticleIdMap;
+
 	class ResourceManager
 	{
-	  public:
+	public:
 		static std::vector<Texture> textures;
 		static std::vector<Shader*> shaders;
 		static std::vector<SpriteTransform> spriteTransforms;
@@ -22,6 +27,17 @@ namespace MikuMikuWorld
 		static int getShader(const std::string& name);
 
 		static void loadTransforms(const std::string& filename);
+		static int loadParticleEffect(const std::string& filename);
+		static Effect::Particle& getParticleEffect(int id);
+		static int getRootParticleIdByName(const std::string& name);
+		static void removeAllParticleEffects();
 		static void disposeTexture(int texID);
+
+	private:
+		static int nextParticleId;
+		static ParticleIdMap particleIdMap;
+		static std::map<std::string, int> effectNameToRootIdMap;
+
+		static int readParticle(const nlohmann::json& j);
 	};
 }

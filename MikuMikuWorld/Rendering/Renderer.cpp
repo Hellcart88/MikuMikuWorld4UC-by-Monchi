@@ -1,7 +1,8 @@
-#include "Renderer.h"
+Ôªø#include "Renderer.h"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <algorithm>
+#include <cstddef>
 
 namespace MikuMikuWorld
 {
@@ -15,7 +16,6 @@ namespace MikuMikuWorld
 
 	void Renderer::init()
 	{
-		// order: top-right, bottom-right, bottom-left, top-left
 		vPos[0] = DirectX::XMVECTOR{ 0.5f, 0.5f, 0.0f, 1.0f };
 		vPos[1] = DirectX::XMVECTOR{ 0.5f, -0.5f, 0.0f, 1.0f };
 		vPos[2] = DirectX::XMVECTOR{ -0.5f, -0.5f, 0.0f, 1.0f };
@@ -35,12 +35,10 @@ namespace MikuMikuWorld
 			top = 0.5f;
 			bottom = -0.5f;
 			break;
-
 		case 2:
 			top = 1.0f;
 			bottom = 0.0f;
 			break;
-
 		default:
 			break;
 		}
@@ -51,12 +49,10 @@ namespace MikuMikuWorld
 			left = -0.5f;
 			right = 0.5f;
 			break;
-
 		case 2:
 			left = -1.0f;
 			right = 0.0f;
 			break;
-
 		default:
 			break;
 		}
@@ -69,25 +65,28 @@ namespace MikuMikuWorld
 
 	void Renderer::setUVCoords(const Texture& tex, float x1, float x2, float y1, float y2)
 	{
+		setUVCoords(tex, x1, x2, y1, y2, 0.0f);
+	}
+
+	void Renderer::setUVCoords(const Texture& tex, float x1, float x2, float y1, float y2, float blend)
+	{
 		float left = x1 / tex.getWidth();
 		float right = x2 / tex.getWidth();
 		float top = y1 / tex.getHeight();
 		float bottom = y2 / tex.getHeight();
 
-		uvCoords[0] = DirectX::XMVECTOR{ right, top, 0.0f, 0.0f };
-		uvCoords[1] = DirectX::XMVECTOR{ right, bottom, 0.0f, 0.0f };
-		uvCoords[2] = DirectX::XMVECTOR{ left, bottom, 0.0f, 0.0f };
-		uvCoords[3] = DirectX::XMVECTOR{ left, top, 0.0f, 0.0f };
+		uvCoords[0] = DirectX::XMVECTOR{ right, top, blend, 0.0f };
+		uvCoords[1] = DirectX::XMVECTOR{ right, bottom, blend, 0.0f };
+		uvCoords[2] = DirectX::XMVECTOR{ left, bottom, blend, 0.0f };
+		uvCoords[3] = DirectX::XMVECTOR{ left, top, blend, 0.0f };
 	}
 
-	DirectX::XMMATRIX Renderer::getModelMatrix(const Vector2& pos, const float rot,
-	                                           const Vector2& sz)
+	DirectX::XMMATRIX Renderer::getModelMatrix(const Vector2& pos, const float rot, const Vector2& sz)
 	{
 		DirectX::XMMATRIX model = DirectX::XMMatrixIdentity();
 		model *= DirectX::XMMatrixScaling(sz.x, sz.y, 1.0f);
 		model *= DirectX::XMMatrixRotationZ(DirectX::XMConvertToRadians(rot));
 		model *= DirectX::XMMatrixTranslation(pos.x, pos.y, 0.0f);
-
 		return model;
 	}
 
@@ -107,7 +106,6 @@ namespace MikuMikuWorld
 		DirectX::XMVECTOR color{ tint.r, tint.g, tint.b, tint.a };
 		setUVCoords(tex, x1, x2, y1, y2);
 		setAnchor(anchor);
-
 		pushQuad(vPos, uvCoords, model, color, tex.getID(), z);
 	}
 
@@ -121,8 +119,55 @@ namespace MikuMikuWorld
 		vPos[2] = DirectX::XMVECTOR{ p1.x, p1.y, 0.0f, 1.0f };
 		vPos[3] = DirectX::XMVECTOR{ p3.x, p3.y, 0.0f, 1.0f };
 		DirectX::XMVECTOR color{ tint.r, tint.g, tint.b, tint.a };
-
 		pushQuad(vPos, uvCoords, DirectX::XMMatrixIdentity(), color, tex.getID(), z);
+	}
+
+	void Renderer::drawQuadWithBlend(const DirectX::XMMATRIX& m, const Texture& tex, const Sprite& s,
+	                                 const Color& tint, int z, float blend)
+	{
+		setAnchor(AnchorType::MiddleCenter);
+		setUVCoords(tex, s.getX(), s.getX() + s.getWidth(), s.getY(), s.getY() + s.getHeight(), blend);
+		DirectX::XMVECTOR color{ tint.r, tint.g, tint.b, tint.a };
+		pushQuad(vPos, uvCoords, m, color, tex.getID(), z);
+	}
+
+	void Renderer::drawQuadWithBlend(const DirectX::XMMATRIX& m, const Texture& tex, int splitX, int splitY,
+	                                 int frame, const Color& tint, int z, float blend, int flipUVs)
+	{
+		setAnchor(AnchorType::MiddleCenter);
+
+		int row = frame / splitX;
+		int col = frame % splitX;
+		int w = tex.getWidth() / splitX;
+		int h = tex.getHeight() / splitY;
+
+		float x1 = col * w;
+		float x2 = x1 + w;
+		float y1 = row * h;
+		float y2 = y1 + h;
+
+		float left = x1 / tex.getWidth();
+		float right = x2 / tex.getWidth();
+		float top = y1 / tex.getHeight();
+		float bottom = y2 / tex.getHeight();
+
+		if (flipUVs)
+		{
+			uvCoords[1] = DirectX::XMVECTOR{ right, top, blend, 0.0f };
+			uvCoords[2] = DirectX::XMVECTOR{ right, bottom, blend, 0.0f };
+			uvCoords[3] = DirectX::XMVECTOR{ left, bottom, blend, 0.0f };
+			uvCoords[0] = DirectX::XMVECTOR{ left, top, blend, 0.0f };
+		}
+		else
+		{
+			uvCoords[0] = DirectX::XMVECTOR{ right, top, blend, 0.0f };
+			uvCoords[1] = DirectX::XMVECTOR{ right, bottom, blend, 0.0f };
+			uvCoords[2] = DirectX::XMVECTOR{ left, bottom, blend, 0.0f };
+			uvCoords[3] = DirectX::XMVECTOR{ left, top, blend, 0.0f };
+		}
+
+		DirectX::XMVECTOR color{ tint.r, tint.g, tint.b, tint.a };
+		pushQuad(vPos, uvCoords, m, color, tex.getID(), z);
 	}
 
 	void Renderer::drawRectangle(Vector2 position, Vector2 size, const Texture& tex, float x1,
@@ -132,7 +177,6 @@ namespace MikuMikuWorld
 		Vector2 p2{ position.x + size.x, position.y };
 		Vector2 p3{ position.x + size.x, position.y + size.y };
 		Vector2 p4{ position.x, position.y + size.y };
-
 		drawQuad(p4, p3, p1, p2, tex, x1, x2, y1, y2, tint, z);
 	}
 
@@ -152,7 +196,6 @@ namespace MikuMikuWorld
 		}
 
 		quads.push_back(q);
-
 		++numQuads;
 		numVertices += 4;
 		numIndices += 6;
@@ -191,6 +234,7 @@ namespace MikuMikuWorld
 		std::stable_sort(quads.begin(), quads.end(),
 		                 [](const Quad& q1, const Quad& q2) { return q1.zIndex < q2.zIndex; });
 
+		vBuffer.bind();
 		bindTexture(quads[0].texture);
 		int vertexCount = 0;
 
@@ -202,7 +246,6 @@ namespace MikuMikuWorld
 				vBuffer.flushBuffer();
 				vBuffer.resetBufferPos();
 				vertexCount = 0;
-
 				bindTexture(q.texture);
 			}
 
@@ -212,8 +255,43 @@ namespace MikuMikuWorld
 
 		vBuffer.uploadBuffer();
 		vBuffer.flushBuffer();
-
 		batchStarted = false;
+	}
+
+	void Renderer::endBatchWithBlending(int srcRGB, int dstRGB, int srcA, int dstA)
+	{
+		GLboolean blending = glIsEnabled(GL_BLEND);
+		if (!blending)
+			glEnable(GL_BLEND);
+
+		GLint oldSrcRGB, oldDstRGB, oldSrcAlpha, oldDstAlpha;
+		glGetIntegerv(GL_BLEND_SRC_RGB, &oldSrcRGB);
+		glGetIntegerv(GL_BLEND_DST_RGB, &oldDstRGB);
+		glGetIntegerv(GL_BLEND_SRC_ALPHA, &oldSrcAlpha);
+		glGetIntegerv(GL_BLEND_DST_ALPHA, &oldDstAlpha);
+
+		glBlendFuncSeparate(srcRGB, dstRGB, srcA, dstA);
+		endBatch();
+		glBlendFuncSeparate(oldSrcRGB, oldDstRGB, oldSrcAlpha, oldDstAlpha);
+
+		if (!blending)
+			glDisable(GL_BLEND);
+	}
+
+	void Renderer::endBatchWithDepthTest(int depthFunc)
+	{
+		GLboolean depthTest = glIsEnabled(GL_DEPTH_TEST);
+		GLint oldDepthFunc;
+		if (!depthTest)
+			glEnable(GL_DEPTH_TEST);
+
+		glGetIntegerv(GL_DEPTH_FUNC, &oldDepthFunc);
+		glDepthFunc(depthFunc);
+		endBatch();
+		glDepthFunc(oldDepthFunc);
+
+		if (!depthTest)
+			glDisable(GL_DEPTH_TEST);
 	}
 
 	void Renderer::pushQuad(const std::array<DirectX::XMFLOAT4, 4>& pos,
@@ -242,9 +320,9 @@ namespace MikuMikuWorld
 		{
 			vPos[i] = DirectX::XMLoadFloat4(&pos[i]);
 			vUv[i] = DirectX::XMLoadFloat4(&uv[i]);
-			vCol[i] = DirectX::XMLoadFloat4(&colors[i]); //  í∏ì_Ç≤Ç∆ÇÃêFÇÉçÅ[Éh
+			vCol[i] = DirectX::XMLoadFloat4(&colors[i]);
 		}
-		
+
 		Quad q;
 		q.matrix = m;
 		q.texture = tex;
@@ -257,9 +335,70 @@ namespace MikuMikuWorld
 		}
 
 		quads.push_back(q);
-
 		++numQuads;
 		numVertices += 4;
 		numIndices += 6;
+	}
+
+	void Renderer::pushQuadMasked(const std::array<DirectX::XMFLOAT4, 4>& pos,
+	                              const std::array<DirectX::XMFLOAT4, 4>& baseUV,
+	                              const std::array<DirectX::XMFLOAT4, 4>& maskUV,
+	                              const DirectX::XMFLOAT4& col, int tex, int maskTex)
+	{
+		struct MaskVertex
+		{
+			DirectX::XMFLOAT3 position;
+			DirectX::XMFLOAT4 color;
+			DirectX::XMFLOAT2 baseUV;
+			DirectX::XMFLOAT2 maskUV;
+		};
+
+		MaskVertex vertices[4]{};
+		for (int i = 0; i < 4; ++i)
+		{
+			vertices[i].position = { pos[i].x, pos[i].y, pos[i].z };
+			vertices[i].color = col;
+			vertices[i].baseUV = { baseUV[i].x, baseUV[i].y };
+			vertices[i].maskUV = { maskUV[i].x, maskUV[i].y };
+		}
+
+		unsigned int indices[6]{ 0, 1, 2, 2, 3, 0 };
+		unsigned int vao{}, vbo{}, ebo{};
+		glGenVertexArrays(1, &vao);
+		glGenBuffers(1, &vbo);
+		glGenBuffers(1, &ebo);
+
+		glBindVertexArray(vao);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STREAM_DRAW);
+
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(MaskVertex), (void*)offsetof(MaskVertex, position));
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(MaskVertex), (void*)offsetof(MaskVertex, color));
+		glEnableVertexAttribArray(2);
+		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(MaskVertex), (void*)offsetof(MaskVertex, baseUV));
+		glEnableVertexAttribArray(3);
+		glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(MaskVertex), (void*)offsetof(MaskVertex, maskUV));
+
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, tex);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, maskTex);
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, 0);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, 0);
+		glBindVertexArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+		glDeleteBuffers(1, &ebo);
+		glDeleteBuffers(1, &vbo);
+		glDeleteVertexArrays(1, &vao);
 	}
 }
