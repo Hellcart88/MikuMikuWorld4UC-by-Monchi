@@ -353,6 +353,12 @@ gallery_recent_charts, 最近の譜面
 gallery_more, もっと見る
 gallery_all_charts, PC内のすべての譜面
 gallery_add_path, パスを追加:
+gallery_search_paths, 検索パス
+gallery_rescan_paths, パスを再スキャン
+gallery_browse_folder, フォルダを参照
+gallery_path_input_hint, フォルダパスを入力して Enter
+gallery_folder_dialog_open, フォルダ選択を開いています...
+gallery_invalid_search_path, パスが存在しないか、フォルダではありません。
 gallery_start_scan, パスをスキャン
 gallery_delete_file, ファイルの削除
 gallery_delete_confirm, このファイルを完全に削除しますか？
@@ -366,4 +372,5 @@ gallery_show_search_paths, パスを表示
 gallery_hide_search_paths, パスを隠す
 gallery_search, 検索
 gallery_sort, 並び替え
+gallery_modified, 編集日時
 gallery_return_to_editor, エディタに戻る

@@ -1,6 +1,7 @@
 #include "File.h"
 #include "IO.h"
 #include <Windows.h>
+#include <ShObjIdl.h>
 #include <algorithm>
 #include <ctime>
 #include <stdio.h>
@@ -220,6 +221,62 @@ namespace IO
 	{
 		std::wstring wTitle = mbToWideStr(title);
 
+		if (selectType == DialogSelectType::Folder)
+		{
+			outputFilename.clear();
+
+			HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+			const bool needsCoUninitialize = SUCCEEDED(hr);
+			if (FAILED(hr))
+				return FileDialogResult::Error;
+
+			IFileOpenDialog* dialog = nullptr;
+			hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+			                      IID_PPV_ARGS(&dialog));
+			if (FAILED(hr)) {
+				if (needsCoUninitialize)
+					CoUninitialize();
+				return FileDialogResult::Error;
+			}
+
+			DWORD options = 0;
+			if (SUCCEEDED(dialog->GetOptions(&options))) {
+				dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
+			}
+
+			if (!wTitle.empty())
+				dialog->SetTitle(wTitle.c_str());
+
+			hr = dialog->Show(reinterpret_cast<HWND>(parentWindowHandle));
+			if (FAILED(hr)) {
+				dialog->Release();
+				if (needsCoUninitialize)
+					CoUninitialize();
+				return hr == HRESULT_FROM_WIN32(ERROR_CANCELLED) ? FileDialogResult::Cancel : FileDialogResult::Error;
+			}
+
+			IShellItem* item = nullptr;
+			hr = dialog->GetResult(&item);
+			if (SUCCEEDED(hr)) {
+				PWSTR folderPath = nullptr;
+				hr = item->GetDisplayName(SIGDN_FILESYSPATH, &folderPath);
+				if (SUCCEEDED(hr) && folderPath) {
+					outputFilename = wideStringToMb(folderPath);
+					CoTaskMemFree(folderPath);
+				}
+				item->Release();
+			}
+
+			dialog->Release();
+			if (needsCoUninitialize)
+				CoUninitialize();
+
+			if (FAILED(hr))
+				return FileDialogResult::Error;
+
+			return outputFilename.empty() ? FileDialogResult::Cancel : FileDialogResult::OK;
+		}
+
 		OPENFILENAMEW ofn;
 		memset(&ofn, 0, sizeof(ofn));
 		ofn.lStructSize = sizeof(ofn);
@@ -293,6 +350,11 @@ namespace IO
 	FileDialogResult FileDialog::openFile()
 	{
 		return showFileDialog(DialogType::Open, DialogSelectType::File);
+	}
+
+	FileDialogResult FileDialog::openFolder()
+	{
+		return showFileDialog(DialogType::Open, DialogSelectType::Folder);
 	}
 
 	FileDialogResult FileDialog::saveFile()

@@ -2,6 +2,7 @@
 #include "Application.h"
 #include "File.h"
 #include "NativeScoreSerializer.h"
+#include "ScoreStats.h"
 #include "Audio/Sound.h"
 #include "UI.h"
 #include "IconsFontAwesome5.h"
@@ -85,6 +86,9 @@ namespace MikuMikuWorld
 		item->artist = "-";
 		item->author = "-";
 		item->folder = "-";
+		try {
+			item->modifiedTime = std::filesystem::last_write_time(IO::mbToWideStr(filepath));
+		} catch (...) {}
 
 		if (galleryStates.count(filepath)) {
 			item->isFavorite = galleryStates[filepath].isFavorite;
@@ -96,7 +100,9 @@ namespace MikuMikuWorld
 			if (!tempScore.metadata.title.empty()) item->title = tempScore.metadata.title;
 			if (!tempScore.metadata.artist.empty()) item->artist = tempScore.metadata.artist;
 			if (!tempScore.metadata.author.empty()) item->author = tempScore.metadata.author;
-			item->totalCombo = tempScore.notes.size();
+			ScoreStats stats{};
+			stats.calculateStats(tempScore);
+			item->totalCombo = stats.getCombo();
 
 			if (!tempScore.metadata.musicFile.empty()) {
 				std::string absAudioPath = tempScore.metadata.musicFile;
@@ -156,6 +162,84 @@ namespace MikuMikuWorld
 
 		activeTab = 0; 
 		saveGalleryData();
+	}
+
+	void ChartGalleryWindow::scanSearchPaths()
+	{
+		localItems.clear();
+		try {
+			for (const auto& pathStr : searchPaths) {
+				std::wstring wp = IO::mbToWideStr(pathStr);
+				if (std::filesystem::exists(wp)) {
+					for (const auto& e : std::filesystem::recursive_directory_iterator(wp)) {
+						if (e.is_regular_file()) {
+							std::string ex = e.path().extension().string();
+							if (ex == ".mmws" || ex == ".ccmmws" || ex == ".unchmmws") {
+								localItems.push_back(loadItemInfo(IO::wideStringToMb(e.path().wstring())));
+							}
+						}
+					}
+				}
+			}
+		} catch (...) {}
+	}
+
+	bool ChartGalleryWindow::addSearchPath(const std::string& path)
+	{
+		pathInputError.clear();
+
+		if (path.empty())
+			return false;
+
+		std::filesystem::path folderPath = IO::mbToWideStr(path);
+		std::error_code errorCode{};
+		if (!std::filesystem::exists(folderPath, errorCode) || !std::filesystem::is_directory(folderPath, errorCode)) {
+			pathInputError = getString("gallery_invalid_search_path");
+			return false;
+		}
+
+		if (std::find(searchPaths.begin(), searchPaths.end(), path) == searchPaths.end()) {
+			searchPaths.push_back(path);
+			saveGalleryData();
+		}
+
+		scanSearchPaths();
+		return true;
+	}
+
+	void ChartGalleryWindow::startFolderDialog()
+	{
+		if (folderDialogInProgress)
+			return;
+
+		std::string title = getString("gallery_browse_folder");
+		void* parentWindowHandle = Application::windowState.windowHandle;
+		folderDialogInProgress = true;
+		folderDialogFuture = std::async(std::launch::async, [title, parentWindowHandle]() {
+			IO::FileDialog fileDialog{};
+			fileDialog.title = title;
+			fileDialog.parentWindowHandle = parentWindowHandle;
+
+			if (fileDialog.openFolder() == IO::FileDialogResult::OK)
+				return fileDialog.outputFilename;
+
+			return std::string{};
+		});
+	}
+
+	void ChartGalleryWindow::pollFolderDialog()
+	{
+		if (!folderDialogInProgress || !folderDialogFuture.valid())
+			return;
+
+		if (folderDialogFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+			return;
+
+		std::string selectedPath = folderDialogFuture.get();
+		folderDialogInProgress = false;
+
+		if (!selectedPath.empty())
+			addSearchPath(selectedPath);
 	}
 
 	void ChartGalleryWindow::drawGrid(std::vector<std::shared_ptr<GalleryItem>>& itemsToDraw, const char* gridId)
@@ -366,21 +450,7 @@ namespace MikuMikuWorld
 		}
 	
 		if (!hasAutoScanned && !searchPaths.empty()) {
-			localItems.clear();
-			try {
-				for (const auto& pathStr : searchPaths) {
-					std::wstring wp = IO::mbToWideStr(pathStr);
-					if (std::filesystem::exists(wp)) {
-						for (const auto& e : std::filesystem::recursive_directory_iterator(wp)) {
-							if (e.is_regular_file()) {
-								std::string ex = e.path().extension().string();
-								if (ex == ".mmws" || ex == ".ccmmws" || ex == ".unchmmws") 
-									localItems.push_back(loadItemInfo(IO::wideStringToMb(e.path().wstring())));
-							}
-						}
-					}
-				}
-			} catch (...) {}
+			scanSearchPaths();
 			hasAutoScanned = true;
 		}
 	
@@ -603,6 +673,8 @@ namespace MikuMikuWorld
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(24.0f, 0.0f));
 
 	if (ImGui::BeginChild("MainContentChild", ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysUseWindowPadding)) {
+		pollFolderDialog();
+
 		std::string filterFolder = "";
 		if (activeTab == 3) filterFolder = "Team Projects";
 		else if (activeTab == 4) filterFolder = "Personal";
@@ -666,29 +738,16 @@ namespace MikuMikuWorld
 			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, accentHovered);
 			ImGui::PushStyleColor(ImGuiCol_ButtonActive, accentActive);
 
-			if (ImGui::Button(getString("gallery_start_scan")))
+			if (ImGui::Button(getString("gallery_rescan_paths")))
 			{
-				localItems.clear();
 				saveGalleryData();
-				try {
-					for (const auto& pathStr : searchPaths) {
-						std::wstring wp = IO::mbToWideStr(pathStr);
-						if (std::filesystem::exists(wp)) {
-							for (const auto& e : std::filesystem::recursive_directory_iterator(wp)) {
-								if (e.is_regular_file()) {
-									std::string ex = e.path().extension().string();
-									if (ex == ".mmws" || ex == ".ccmmws" || ex == ".unchmmws") localItems.push_back(loadItemInfo(IO::wideStringToMb(e.path().wstring())));
-								}
-							}
-						}
-					}
-				} catch (...) {}
+				scanSearchPaths();
 			}
 			ImGui::PopStyleColor(3); 
 
 			ImGui::SameLine();
 
-			float totalWidth = 250.0f + 150.0f + 12.0f; 
+			float totalWidth = 250.0f + 180.0f + 12.0f; 
 			ImGui::SetCursorPosX(ImGui::GetWindowWidth() - totalWidth - 16.0f); 
 
 			ImGui::TextDisabled(ICON_FA_SEARCH); 
@@ -701,9 +760,16 @@ namespace MikuMikuWorld
 
 			ImGui::SameLine(); 
 
-			const char* sortOptions[] = { getString("gallery_title"), getString("gallery_artist"), getString("gallery_author"), getString("gallery_combo") };
-			ImGui::SetNextItemWidth(150.0f); 
-			ImGui::Combo("##SortBox", &currentSortMethod, sortOptions, 4);
+			const char* sortOptions[] = {
+				getString("gallery_modified"),
+				getString("gallery_file"),
+				getString("gallery_title"),
+				getString("gallery_artist"),
+				getString("gallery_author"),
+				getString("gallery_combo")
+			};
+			ImGui::SetNextItemWidth(180.0f); 
+			ImGui::Combo("##SortBox", &currentSortMethod, sortOptions, 6);
 
 			ImGui::Spacing(); 
 
@@ -729,23 +795,34 @@ namespace MikuMikuWorld
 
 				if (pathToDeleteIndex != -1) {
 					searchPaths.erase(searchPaths.begin() + pathToDeleteIndex);
+					pathInputError.clear();
 					saveGalleryData();
+					scanSearchPaths();
 				}
 
 				ImGui::Dummy(ImVec2(0.0f, 4.0f));
 
 				ImGui::Text("%s", getString("gallery_add_path"));
 				ImGui::SetNextItemWidth(400.0f);
-				ImGui::InputText("##NewPath", newPathBuffer, sizeof(newPathBuffer));
+				bool addTypedPath = ImGui::InputTextWithHint("##NewPath", getString("gallery_path_input_hint"), newPathBuffer, sizeof(newPathBuffer), ImGuiInputTextFlags_EnterReturnsTrue);
 				ImGui::SameLine();
-				if (ImGui::Button(ICON_FA_PLUS))
+				ImGui::BeginDisabled(folderDialogInProgress);
+				if (ImGui::Button((std::string(ICON_FA_FOLDER_OPEN) + " " + getString("gallery_browse_folder")).c_str()))
+					startFolderDialog();
+				ImGui::EndDisabled();
+				UI::tooltip(getString("gallery_browse_folder"));
+				if (folderDialogInProgress) {
+					ImGui::SameLine();
+					ImGui::TextDisabled("%s", getString("gallery_folder_dialog_open"));
+				}
+
+				if (addTypedPath)
 				{
-					if (strlen(newPathBuffer) > 0)
-					{
-						searchPaths.push_back(newPathBuffer);
+					if (addSearchPath(newPathBuffer))
 						memset(newPathBuffer, 0, sizeof(newPathBuffer));
-						saveGalleryData();
-					}
+				}
+				if (!pathInputError.empty()) {
+					ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", pathInputError.c_str());
 				}
 				ImGui::Unindent();
 				ImGui::Dummy(ImVec2(0.0f, 8.0f));
@@ -779,10 +856,29 @@ namespace MikuMikuWorld
 			}
 
 			std::sort(displayItems.begin(), displayItems.end(), [&](const std::shared_ptr<GalleryItem>& a, const std::shared_ptr<GalleryItem>& b) {
-				if (currentSortMethod == 0) return a->title < b->title;          
-				if (currentSortMethod == 1) return a->artist < b->artist;        
-				if (currentSortMethod == 2) return a->author < b->author;        
-				if (currentSortMethod == 3) return a->totalCombo > b->totalCombo;
+				auto isUnset = [](const std::string& value) {
+					return value.empty() || value == "-";
+				};
+				auto compareText = [&](const std::string& left, const std::string& right, const std::string& leftFallback, const std::string& rightFallback) {
+					bool leftUnset = isUnset(left);
+					bool rightUnset = isUnset(right);
+					if (leftUnset != rightUnset)
+						return !leftUnset;
+
+					const std::string& leftValue = leftUnset ? leftFallback : left;
+					const std::string& rightValue = rightUnset ? rightFallback : right;
+					if (leftValue != rightValue)
+						return leftValue < rightValue;
+
+					return leftFallback < rightFallback;
+				};
+
+				if (currentSortMethod == 0) return a->modifiedTime != b->modifiedTime ? a->modifiedTime > b->modifiedTime : a->filename < b->filename;
+				if (currentSortMethod == 1) return a->filename < b->filename;
+				if (currentSortMethod == 2) return compareText(a->title, b->title, a->filename, b->filename);
+				if (currentSortMethod == 3) return compareText(a->artist, b->artist, a->filename, b->filename);
+				if (currentSortMethod == 4) return compareText(a->author, b->author, a->filename, b->filename);
+				if (currentSortMethod == 5) return a->totalCombo != b->totalCombo ? a->totalCombo > b->totalCombo : a->filename < b->filename;
 				return false;
 			});
 

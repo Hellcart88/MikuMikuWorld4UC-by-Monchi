@@ -5,6 +5,8 @@
 #include <vector>
 #include <memory>
 #include <unordered_map>
+#include <filesystem>
+#include <future>
 
 namespace MikuMikuWorld
 {
@@ -23,6 +25,7 @@ namespace MikuMikuWorld
 		std::string author;    
 		int totalCombo = 0;    
 		std::string lengthStr = "-"; 
+		std::filesystem::file_time_type modifiedTime{};
 
 		std::shared_ptr<Texture> texture; 
 		bool isFavorite = false;
@@ -38,9 +41,12 @@ namespace MikuMikuWorld
 
 		std::vector<std::string> searchPaths;
 		char newPathBuffer[512] = "";
+		std::string pathInputError = "";
 		bool isSearchPathsOpen = true;
 		char searchQuery[256] = "";
-		int currentSortMethod = 0;  // 0: タイトル, 1: アーティスト, 2: 作者, 3: コンボ
+		int currentSortMethod = 0;  // 0: modified, 1: file, 2: title, 3: artist, 4: author, 5: combo
+		bool folderDialogInProgress = false;
+		std::future<std::string> folderDialogFuture{};
 
 		std::unordered_map<std::string, ChartState> galleryStates;
 		std::vector<std::shared_ptr<GalleryItem>> recentItems;
@@ -68,6 +74,10 @@ namespace MikuMikuWorld
 		void drawGrid(std::vector<std::shared_ptr<GalleryItem>>& itemsToDraw, const char* gridId);
 		void removeDeletedItemFromLists(const std::string& filepath);
 		void deleteFolder(int index);
+		void scanSearchPaths();
+		bool addSearchPath(const std::string& path);
+		void startFolderDialog();
+		void pollFolderDialog();
 
 	public:
 		bool open = true;

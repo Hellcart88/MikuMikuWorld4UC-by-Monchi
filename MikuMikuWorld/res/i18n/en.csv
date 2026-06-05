@@ -350,6 +350,12 @@ gallery_recent_charts,Recent Charts
 gallery_more,More
 gallery_all_charts,All Charts on PC
 gallery_add_path,Add Path:
+gallery_search_paths,Search Paths
+gallery_rescan_paths,Rescan Paths
+gallery_browse_folder,Browse Folder
+gallery_path_input_hint,Type a folder path and press Enter
+gallery_folder_dialog_open,Folder picker is open...
+gallery_invalid_search_path,The path does not exist or is not a folder.
 gallery_start_scan,Scan Paths
 gallery_delete_file,Delete File
 gallery_delete_confirm,Are you sure you want to permanently delete this file?
@@ -363,4 +369,5 @@ gallery_show_search_paths,Show Paths
 gallery_hide_search_paths,Hide Paths
 gallery_search,Search
 gallery_sort,Sort
+gallery_modified,Modified
 gallery_return_to_editor,Return to Editor
