@@ -14,7 +14,66 @@
 #include <filesystem>
 #include <algorithm>
 #include <cstring>
+#include <Windows.h>
 #include "json.hpp"
+
+namespace
+{
+	uint64_t fileTimeToUint64(const FILETIME& fileTime)
+	{
+		ULARGE_INTEGER value{};
+		value.LowPart = fileTime.dwLowDateTime;
+		value.HighPart = fileTime.dwHighDateTime;
+		return value.QuadPart;
+	}
+
+	void getFileTimes(const std::string& filepath, uint64_t& createdTime, uint64_t& modifiedTime)
+	{
+		WIN32_FILE_ATTRIBUTE_DATA fileData{};
+		if (!GetFileAttributesExW(IO::mbToWideStr(filepath).c_str(), GetFileExInfoStandard, &fileData))
+			return;
+
+		createdTime = fileTimeToUint64(fileData.ftCreationTime);
+		modifiedTime = fileTimeToUint64(fileData.ftLastWriteTime);
+	}
+
+	std::string toLowerAscii(std::string s)
+	{
+		for (char& c : s) {
+			if (c >= 'A' && c <= 'Z')
+				c += ('a' - 'A');
+		}
+		return s;
+	}
+
+	int compareTextForSort(const std::string& left, const std::string& right)
+	{
+		std::wstring leftWide = IO::mbToWideStr(left);
+		std::wstring rightWide = IO::mbToWideStr(right);
+		int result = CompareStringEx(
+			LOCALE_NAME_USER_DEFAULT,
+			NORM_IGNORECASE | NORM_IGNOREWIDTH | NORM_IGNOREKANATYPE,
+			leftWide.c_str(),
+			-1,
+			rightWide.c_str(),
+			-1,
+			nullptr,
+			nullptr,
+			0);
+
+		if (result == CSTR_LESS_THAN) return -1;
+		if (result == CSTR_GREATER_THAN) return 1;
+		if (result == CSTR_EQUAL) return 0;
+
+		std::string leftKey = toLowerAscii(left);
+		std::string rightKey = toLowerAscii(right);
+		if (leftKey < rightKey) return -1;
+		if (leftKey > rightKey) return 1;
+		if (left < right) return -1;
+		if (left > right) return 1;
+		return 0;
+	}
+}
 
 namespace MikuMikuWorld
 {
@@ -86,9 +145,7 @@ namespace MikuMikuWorld
 		item->artist = "-";
 		item->author = "-";
 		item->folder = "-";
-		try {
-			item->modifiedTime = std::filesystem::last_write_time(IO::mbToWideStr(filepath));
-		} catch (...) {}
+		getFileTimes(filepath, item->createdTime, item->modifiedTime);
 
 		if (galleryStates.count(filepath)) {
 			item->isFavorite = galleryStates[filepath].isFavorite;
@@ -134,6 +191,81 @@ namespace MikuMikuWorld
 			}
 		} catch (...) {}
 		return item;
+	}
+
+	void ChartGalleryWindow::refreshRecentItems(const std::vector<std::string>& recentFiles)
+	{
+		if (recentFiles == loadedRecentFiles)
+			return;
+
+		loadedRecentFiles = recentFiles;
+		recentItems.clear();
+		for (const std::string& filepath : recentFiles)
+			if (IO::File::exists(filepath))
+				recentItems.push_back(loadItemInfo(filepath));
+	}
+
+	void ChartGalleryWindow::sortItems(std::vector<std::shared_ptr<GalleryItem>>& items)
+	{
+		auto isUnset = [](const std::string& value) {
+			return value.empty() || value == "-";
+		};
+
+		auto applyDirection = [&](int comparison) {
+			if (comparison == 0)
+				return false;
+			return sortAscending ? comparison < 0 : comparison > 0;
+		};
+
+		std::sort(items.begin(), items.end(), [&](const std::shared_ptr<GalleryItem>& a, const std::shared_ptr<GalleryItem>& b) {
+			auto compareName = [&](const std::string& left, const std::string& right, const std::string& leftFallback, const std::string& rightFallback) {
+				bool leftUnset = isUnset(left);
+				bool rightUnset = isUnset(right);
+				if (leftUnset != rightUnset)
+					return !leftUnset;
+
+				const std::string& leftValue = leftUnset ? leftFallback : left;
+				const std::string& rightValue = rightUnset ? rightFallback : right;
+				int valueComparison = compareTextForSort(leftValue, rightValue);
+				if (valueComparison != 0)
+					return applyDirection(valueComparison);
+
+				int fallbackComparison = compareTextForSort(leftFallback, rightFallback);
+				if (fallbackComparison != 0)
+					return fallbackComparison < 0;
+
+				return a->filepath < b->filepath;
+			};
+
+			auto compareNameNoUnset = [&](const std::string& left, const std::string& right) {
+				int valueComparison = compareTextForSort(left, right);
+				if (valueComparison != 0)
+					return applyDirection(valueComparison);
+
+				return a->filepath < b->filepath;
+			};
+
+			auto compareNumber = [&](uint64_t left, uint64_t right) {
+				if (left != right)
+					return sortAscending ? left < right : left > right;
+
+				int filenameComparison = compareTextForSort(a->filename, b->filename);
+				if (filenameComparison != 0)
+					return filenameComparison < 0;
+
+				return a->filepath < b->filepath;
+			};
+
+			if (sortMode == 0) return compareNumber(a->modifiedTime, b->modifiedTime);
+			if (sortMode == 1) return compareNumber(a->createdTime, b->createdTime);
+			if (sortMode == 3) return compareNumber(static_cast<uint64_t>(a->totalCombo), static_cast<uint64_t>(b->totalCombo));
+
+			if (nameSortTarget == 0) return compareName(a->title, b->title, a->filename, b->filename);
+			if (nameSortTarget == 1) return compareNameNoUnset(a->filename, b->filename);
+			if (nameSortTarget == 2) return compareName(a->artist, b->artist, a->filename, b->filename);
+			if (nameSortTarget == 3) return compareName(a->author, b->author, a->filename, b->filename);
+			return a->filepath < b->filepath;
+		});
 	}
 
 	void ChartGalleryWindow::removeDeletedItemFromLists(const std::string& filepath)
@@ -439,7 +571,6 @@ namespace MikuMikuWorld
 	
 		if (!recentLoaded) {
 			loadGalleryData();
-			for (const std::string& filepath : recentFiles) if (IO::File::exists(filepath)) recentItems.push_back(loadItemInfo(filepath));
 			std::string iconPath = Application::getAppDir() + "res\\textures\\gallery\\placeholder.png";
 			if (IO::File::exists(iconPath)) defaultIcon = std::make_unique<Texture>(iconPath);
 			std::string appIconPath = Application::getAppDir() + "res\\mmw_icon.png";
@@ -448,6 +579,7 @@ namespace MikuMikuWorld
 			}
 			recentLoaded = true;
 		}
+		refreshRecentItems(recentFiles);
 	
 		if (!hasAutoScanned && !searchPaths.empty()) {
 			scanSearchPaths();
@@ -747,7 +879,8 @@ namespace MikuMikuWorld
 
 			ImGui::SameLine();
 
-			float totalWidth = 250.0f + 180.0f + 12.0f; 
+			float sortDirectionWidth = 110.0f;
+			float totalWidth = 250.0f + 170.0f + 150.0f + sortDirectionWidth + 42.0f; 
 			ImGui::SetCursorPosX(ImGui::GetWindowWidth() - totalWidth - 16.0f); 
 
 			ImGui::TextDisabled(ICON_FA_SEARCH); 
@@ -760,16 +893,37 @@ namespace MikuMikuWorld
 
 			ImGui::SameLine(); 
 
-			const char* sortOptions[] = {
+			const char* sortModeOptions[] = {
 				getString("gallery_modified"),
-				getString("gallery_file"),
-				getString("gallery_title"),
-				getString("gallery_artist"),
-				getString("gallery_author"),
+				getString("gallery_created"),
+				getString("gallery_name_sort"),
 				getString("gallery_combo")
 			};
-			ImGui::SetNextItemWidth(180.0f); 
-			ImGui::Combo("##SortBox", &currentSortMethod, sortOptions, 6);
+			ImGui::SetNextItemWidth(170.0f);
+			ImGui::Combo("##SortModeBox", &sortMode, sortModeOptions, 4);
+
+			ImGui::SameLine();
+
+			const char* nameSortTargetOptions[] = {
+				getString("gallery_title"),
+				getString("gallery_file"),
+				getString("gallery_artist"),
+				getString("gallery_author")
+			};
+			ImGui::BeginDisabled(sortMode != 2);
+			ImGuiStyle& style = ImGui::GetStyle();
+			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(style.ItemSpacing.x, style.ItemSpacing.y + 4.0f));
+			ImGui::SetNextItemWidth(150.0f);
+			ImGui::Combo("##NameSortTargetBox", &nameSortTarget, nameSortTargetOptions, 4);
+			ImGui::PopStyleVar();
+			ImGui::EndDisabled();
+
+			ImGui::SameLine();
+			std::string sortDirectionLabel = std::string(sortAscending ? ICON_FA_SORT_AMOUNT_UP : ICON_FA_SORT_AMOUNT_DOWN) + " " + getString(sortAscending ? "gallery_sort_ascending" : "gallery_sort_descending");
+			if (ImGui::Button(sortDirectionLabel.c_str(), ImVec2(sortDirectionWidth, 0.0f))) {
+				sortAscending = !sortAscending;
+			}
+			UI::tooltip(sortAscending ? getString("gallery_sort_ascending") : getString("gallery_sort_descending"));
 
 			ImGui::Spacing(); 
 
@@ -828,13 +982,6 @@ namespace MikuMikuWorld
 				ImGui::Dummy(ImVec2(0.0f, 8.0f));
 			}
 
-			auto toLowerAscii = [](std::string s) {
-				for (char& c : s) {
-					if (c >= 'A' && c <= 'Z') c += ('a' - 'A');
-				}
-				return s;
-			};
-
 			std::vector<std::shared_ptr<GalleryItem>> displayItems;
 			std::string query = toLowerAscii(searchQuery);
 
@@ -855,32 +1002,7 @@ namespace MikuMikuWorld
 				}
 			}
 
-			std::sort(displayItems.begin(), displayItems.end(), [&](const std::shared_ptr<GalleryItem>& a, const std::shared_ptr<GalleryItem>& b) {
-				auto isUnset = [](const std::string& value) {
-					return value.empty() || value == "-";
-				};
-				auto compareText = [&](const std::string& left, const std::string& right, const std::string& leftFallback, const std::string& rightFallback) {
-					bool leftUnset = isUnset(left);
-					bool rightUnset = isUnset(right);
-					if (leftUnset != rightUnset)
-						return !leftUnset;
-
-					const std::string& leftValue = leftUnset ? leftFallback : left;
-					const std::string& rightValue = rightUnset ? rightFallback : right;
-					if (leftValue != rightValue)
-						return leftValue < rightValue;
-
-					return leftFallback < rightFallback;
-				};
-
-				if (currentSortMethod == 0) return a->modifiedTime != b->modifiedTime ? a->modifiedTime > b->modifiedTime : a->filename < b->filename;
-				if (currentSortMethod == 1) return a->filename < b->filename;
-				if (currentSortMethod == 2) return compareText(a->title, b->title, a->filename, b->filename);
-				if (currentSortMethod == 3) return compareText(a->artist, b->artist, a->filename, b->filename);
-				if (currentSortMethod == 4) return compareText(a->author, b->author, a->filename, b->filename);
-				if (currentSortMethod == 5) return a->totalCombo != b->totalCombo ? a->totalCombo > b->totalCombo : a->filename < b->filename;
-				return false;
-			});
+			sortItems(displayItems);
 
 			drawGrid(displayItems, "LocalGrid");
 		}

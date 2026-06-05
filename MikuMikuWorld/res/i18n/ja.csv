@@ -372,5 +372,9 @@ gallery_show_search_paths, パスを表示
 gallery_hide_search_paths, パスを隠す
 gallery_search, 検索
 gallery_sort, 並び替え
+gallery_created, 作成日時
+gallery_name_sort, 名前順
+gallery_sort_ascending, 昇順
+gallery_sort_descending, 降順
 gallery_modified, 編集日時
 gallery_return_to_editor, エディタに戻る

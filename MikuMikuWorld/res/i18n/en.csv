@@ -369,5 +369,9 @@ gallery_show_search_paths,Show Paths
 gallery_hide_search_paths,Hide Paths
 gallery_search,Search
 gallery_sort,Sort
+gallery_created,Created
+gallery_name_sort,Name
+gallery_sort_ascending,Ascending
+gallery_sort_descending,Descending
 gallery_modified,Modified
 gallery_return_to_editor,Return to Editor

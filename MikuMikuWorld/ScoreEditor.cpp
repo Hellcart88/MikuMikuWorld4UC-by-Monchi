@@ -426,6 +426,7 @@ namespace MikuMikuWorld
 
 		timeline.setPlaying(context, false);
 		serializeWindow.deserialize(filename);
+		updateRecentFilesList(filename);
 	}
 
 	void ScoreEditor::loadMusic(std::string filename)
