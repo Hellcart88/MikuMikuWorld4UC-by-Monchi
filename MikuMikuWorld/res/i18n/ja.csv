@@ -298,17 +298,18 @@ zoom_out, ズームアウト
 preview, プレビュー
 score_preview, 譜面プレビュー
 notes_speed, ノーツの速さ
+holds_alpha, ロングノーツの不透明度
+guides_alpha, ガイドノーツの不透明度
 mirror_score, ミラー譜面
 preview_draw_toolbar, プレビューツールバーを描く
 background_brightnes, 背景の明るさ
-stage_opacity, ステージの不透明度
+stage_opacity, レーンの不透明度
 stage_cover, ステージカバー（縦方向）
-visuals, ビジュアル
-flicks_animation, マーカーのアニメーション
-holds_animation, ロングノーツのアニメーション
+visuals, ノーツ設定
+flicks_animation, フリックの方向のアニメーション
+holds_animation, スライドホールド時のアニメーション
 simultaneous_lines, 同時押しライン
-holds_alpha, ロングノーツの不透明度
-guides_alpha, ガイドノーツの不透明度
+
 action, コマンド
 keys, キー
 add, 追加
