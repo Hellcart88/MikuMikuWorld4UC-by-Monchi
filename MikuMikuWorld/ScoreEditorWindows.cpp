@@ -1766,7 +1766,6 @@ namespace MikuMikuWorld
 			if (UI::transparentButton(ICON_FA_EYE, ImVec2(layersButtonHeight, layersButtonHeight), false))
 				context.showAllLayers = !context.showAllLayers;
 			if (showAllLayers) ImGui::PopStyleColor();
-			UI::tooltip(getString("show_all_layers"));
 
 			float rightWidth = (layersButtonHeight * 4.0f) + (4.0f * 3.0f);
 			ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - rightWidth);
@@ -1786,7 +1785,6 @@ namespace MikuMikuWorld
 				context.selectedLayer = renameIndex;
 				focusRenameInput = true;
 			}
-			UI::tooltip(getString("create_layer"));
 			ImGui::SameLine();
 
 			if (UI::transparentButton(ICON_FA_FOLDER_PLUS, ImVec2(layersButtonHeight, layersButtonHeight), false))
@@ -1801,27 +1799,24 @@ namespace MikuMikuWorld
 				context.selectedLayer = renameIndex;
 				focusRenameInput = true;
 			}
-			UI::tooltip(getString("create_folder")); // 日本語化
 			ImGui::SameLine();
 
 			bool canMerge = context.selectedLayer >= 0 && context.selectedLayer < context.score.layers.size() - 1 && !context.score.layers[context.selectedLayer].isFolder;
 			if (!canMerge) ImGui::BeginDisabled();
 			if (UI::transparentButton(ICON_FA_LEVEL_DOWN_ALT, ImVec2(layersButtonHeight, layersButtonHeight), false))
 			{
-				ImGui::OpenPopup(getString("layer_merge_confirm")); // 日本語化
+				ImGui::OpenPopup(getString("layer_merge_confirm"));
 			}
 			if (!canMerge) ImGui::EndDisabled();
-			UI::tooltip(getString("layer_merge"));
 			ImGui::SameLine();
 
 			bool canDelete = context.selectedLayer >= 0 && context.score.layers.size() > 1;
 			if (!canDelete) ImGui::BeginDisabled();
 			if (UI::transparentButton(ICON_FA_TRASH, ImVec2(layersButtonHeight, layersButtonHeight), false))
 			{
-				ImGui::OpenPopup(getString("layer_delete_confirm")); // 日本語化
+				ImGui::OpenPopup(getString("layer_delete_confirm"));
 			}
 			if (!canDelete) ImGui::EndDisabled();
-			UI::tooltip(getString("delete"));
 
 			ImGui::PopStyleVar();
 			ImGui::Separator();
@@ -2315,18 +2310,16 @@ namespace MikuMikuWorld
 
 			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 4));
 
-			if (UI::transparentButton(descendingOrder ? ICON_FA_CHEVRON_UP : ICON_FA_CHEVRON_DOWN, ImVec2(waypointButtonHeight, waypointButtonHeight), false))
-			{
+			std::string sortDirectionLabel = std::string(descendingOrder ? ICON_FA_SORT_AMOUNT_DOWN : ICON_FA_SORT_AMOUNT_UP) + " " + getString(descendingOrder ? "sort_descending" : "sort_ascending");
+			if (ImGui::Button(sortDirectionLabel.c_str(), ImVec2(0.0f, 0.0f)))
 				descendingOrder = !descendingOrder;
-			}
-			UI::tooltip(descendingOrder ? getString("sort_asc") : getString("sort_desc")); // 日本語化
 
 			float rightWpWidth = (waypointButtonHeight * 2.0f) + (4.0f * 1.0f);
 			ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - rightWpWidth);
 
 			if (UI::transparentButton(ICON_FA_PLUS, ImVec2(waypointButtonHeight, waypointButtonHeight), false))
 			{
-				Waypoint newWp{ getString("new_waypoint"), context.currentTick }; // 日本語化
+				Waypoint newWp{ getString("new_waypoint"), context.currentTick };
 				context.score.waypoints.push_back(newWp);
 				
 				std::sort(context.score.waypoints.begin(), context.score.waypoints.end(),
@@ -2342,7 +2335,6 @@ namespace MikuMikuWorld
 					focusRenameInput = true;
 				}
 			}
-			UI::tooltip(getString("create_waypoint"));
 			ImGui::SameLine();
 
 			bool canDelete = selectedWaypointIndex >= 0 && selectedWaypointIndex < context.score.waypoints.size();
@@ -2354,7 +2346,6 @@ namespace MikuMikuWorld
 				renameIndex = -1;
 			}
 			if (!canDelete) ImGui::EndDisabled();
-			UI::tooltip(getString("delete"));
 
 			ImGui::PopStyleVar();
 			ImGui::Separator();

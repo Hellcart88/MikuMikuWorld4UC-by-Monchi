@@ -401,7 +401,6 @@ namespace MikuMikuWorld
 		ImGui::SetNextItemWidth(width);
 
 		act |= ImGui::SliderFloat(labelID(label), &value, min, max, "%.2fx");
-		tooltip(getString("zoom_tooltip"));
 		ImGui::SameLine();
 
 		if (UI::transparentButton(ICON_FA_SEARCH_PLUS, UI::btnSmall, true, value < max))
