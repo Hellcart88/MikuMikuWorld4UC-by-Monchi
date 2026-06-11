@@ -312,7 +312,7 @@ namespace MikuMikuWorld
 		vsync = true;
 		showFPS = false;
 
-		accentColor = 2;
+		accentColor = 1;
 		userColor = Color(0.2f, 0.2f, 0.2f, 1.0f);
 		baseTheme = static_cast<BaseTheme>(0);
 		language = "auto";

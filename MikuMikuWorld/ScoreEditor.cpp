@@ -458,12 +458,7 @@ namespace MikuMikuWorld
 		context.waveformL.clear();
 		context.waveformR.clear();
 		context.clearSelection();
-
-		// 追加：描画キャッシュをクリアして古いデータの参照を防ぐ
-		// context.scorePreviewDrawData.drawingNotes.clear();
-
-		// New score; nothing to save
-		context.upToDate = true;
+		context.upToDate = true;  // New score; nothing to save
 
 		UI::setWindowTitle(windowUntitled);
 	}
