@@ -923,6 +923,10 @@ namespace MikuMikuWorld
 			return 0;
 		case HoldStepLayer::Bottom:
 			return 1;
+		case HoldStepLayer::Under:
+			return 2;
+		case HoldStepLayer::Over:
+			return 3;
 		default:
 			PRINT_DEBUG("Unknown HoldStepLayer");
 			return 0;
@@ -1632,6 +1636,10 @@ namespace MikuMikuWorld
 			return HoldStepLayer::Top;
 		case 1:
 			return HoldStepLayer::Bottom;
+		case 2:
+			return HoldStepLayer::Under;
+		case 3:
+			return HoldStepLayer::Over;
 		default:
 			return HoldStepLayer::LayerCount;
 		}

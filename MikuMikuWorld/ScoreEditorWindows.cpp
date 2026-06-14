@@ -378,6 +378,8 @@ namespace MikuMikuWorld
 							{
 								auto& n = context.score.notes.at(id);
 								n.dummy = note.dummy;
+								if (n.dummy)
+									n.soundEffect = SoundEffectType::Default;
 							}
 							edited = true;
 						}
@@ -443,17 +445,34 @@ namespace MikuMikuWorld
 					{
 						auto& n = context.score.notes.at(id);
 						n.dummy = note.dummy;
+						if (n.dummy)
+							n.soundEffect = SoundEffectType::Default;
 					}
 					edited = true;
 				}
 			}
 
-			if (UI::addSelectProperty(getString("sound_effect"), note.soundEffect,
+			bool hasEditableSoundEffect = false;
+			SoundEffectType soundEffect = note.soundEffect;
+			for (auto id : context.selectedNotes)
+			{
+				auto& n = context.score.notes.at(id);
+				if (!n.canSoundEffect())
+					continue;
+				if (!hasEditableSoundEffect)
+					soundEffect = n.soundEffect;
+				hasEditableSoundEffect = true;
+			}
+
+			if (hasEditableSoundEffect &&
+			    UI::addSelectProperty(getString("sound_effect"), soundEffect,
 			                          soundEffectTypes, arrayLength(soundEffectTypes)))
 			{
 				for (auto& id : context.selectedNotes)
 				{
-					context.score.notes.at(id).soundEffect = note.soundEffect;
+					auto& n = context.score.notes.at(id);
+					if (n.canSoundEffect())
+						n.soundEffect = soundEffect;
 				}
 				edited = true;
 			}

@@ -74,6 +74,45 @@ namespace MikuMikuWorld
 		    tick, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, layer);
 	}
 
+	static bool isLayerHideNotesActive(const Score& score, int layer, int tick)
+	{
+		if (layer < 0 || layer >= static_cast<int>(score.layers.size()))
+			return false;
+
+		const HiSpeedChange* active = nullptr;
+		id_t activeId = -1;
+		for (const auto& [id, hiSpeed] : score.hiSpeedChanges)
+		{
+			if (hiSpeed.layer != layer || hiSpeed.tick > tick)
+				continue;
+			if (!active || hiSpeed.tick > active->tick ||
+			    (hiSpeed.tick == active->tick && id > activeId))
+			{
+				active = &hiSpeed;
+				activeId = id;
+			}
+		}
+
+		return active && active->hideNotes;
+	}
+
+	static int getConnectorLayerZOffset(HoldStepLayer layer)
+	{
+		switch (layer)
+		{
+		case HoldStepLayer::Over:
+			return 1 << 29;
+		case HoldStepLayer::Top:
+			return 0;
+		case HoldStepLayer::Bottom:
+			return -(1 << 28);
+		case HoldStepLayer::Under:
+			return -(1 << 29);
+		default:
+			return 0;
+		}
+	}
+
 	static std::vector<double> getCurrentLayerScaledTimes(const ScoreContext& context)
 	{
 		std::vector<double> layerStm(context.score.layers.size());
@@ -600,13 +639,16 @@ namespace MikuMikuWorld
 		if (context.currentTick > noteData.tick)
 			continue;
 
-			int layer = std::clamp(noteData.layer, 0, (int)context.score.layers.size() - 1);
-			double scaled_tm = layer_stm[layer];
+		int layer = std::clamp(noteData.layer, 0, (int)context.score.layers.size() - 1);
+		if (isLayerHideNotesActive(context.score, layer, context.currentTick))
+			continue;
 
-			if (scaled_tm < note.visualTime.min)
-				continue;
+		double scaled_tm = layer_stm[layer];
 
-			double y = Engine::approach(note.visualTime.min, note.visualTime.max, scaled_tm);
+		if (scaled_tm < note.visualTime.min)
+			continue;
+
+		double y = Engine::approach(note.visualTime.min, note.visualTime.max, scaled_tm);
 			
 			float l = Engine::laneToLeft(noteData.lane), r = Engine::laneToLeft(noteData.lane) + noteData.width;
 			drawNoteBase(renderer, noteData, l, r, (float)y);
@@ -642,6 +684,9 @@ namespace MikuMikuWorld
 	for (auto& line : drawData)
 	{
 		if (context.currentTick > std::max(line.leftTick, line.rightTick))
+			continue;
+		if (isLayerHideNotesActive(context.score, line.leftLayer, context.currentTick) ||
+		    isLayerHideNotesActive(context.score, line.rightLayer, context.currentTick))
 			continue;
 
 		double left_stm = getCachedLayerScaledTime(context, line.leftTick, line.leftLayer);
@@ -752,13 +797,16 @@ namespace MikuMikuWorld
 		if (context.currentTick > noteData.tick)
 			continue;
 
-			int layer = std::clamp(noteData.layer, 0, (int)context.score.layers.size() - 1);
-			double scaled_tm = layer_stm[layer];
+		int layer = std::clamp(noteData.layer, 0, (int)context.score.layers.size() - 1);
+		if (isLayerHideNotesActive(context.score, layer, context.currentTick))
+			continue;
 
-			if (scaled_tm < tick.visualTime.min)
-				continue;
+		double scaled_tm = layer_stm[layer];
 
-			float y = (float)Engine::approach(tick.visualTime.min, tick.visualTime.max, scaled_tm);
+		if (scaled_tm < tick.visualTime.min)
+			continue;
+
+		float y = (float)Engine::approach(tick.visualTime.min, tick.visualTime.max, scaled_tm);
 			
 			//  Y座標クリッピング
 			if (y < -0.1 || y > 1.2) continue;
@@ -797,6 +845,9 @@ namespace MikuMikuWorld
 			const Note& holdStart = startIt->second;
 			
 			int layer = std::clamp(holdStart.layer, 0, (int)context.score.layers.size() - 1);
+			if (isLayerHideNotesActive(context.score, layer, context.currentTick))
+				continue;
+
 			double current_stm = layer_stm[layer];
 			const float noteDuration = Engine::getNoteDuration(
 				Engine::getLayerEffectiveNoteSpeed(context.score, layer, config.pvNoteSpeed));
@@ -947,8 +998,7 @@ namespace MikuMikuWorld
 			auto model = DirectX::XMMatrixIdentity();
 			float baseAlpha = segment.isGuide ? config.pvGuideAlpha : config.pvHoldAlpha;
 			int zIndex = Engine::getZIndex(segment.isGuide ? SpriteLayer::GUIDE_PATH : SpriteLayer::HOLD_PATH, holdStartCenter, segment.activeTime / total_tm);
-			if (segment.stepLayer == HoldStepLayer::Bottom)
-				zIndex -= 1 << 28;
+			zIndex += getConnectorLayerZOffset(segment.stepLayer);
 	
 			for (int i = 0; i < steps; i++)
 			{
