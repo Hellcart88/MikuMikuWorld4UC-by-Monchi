@@ -169,6 +169,9 @@ namespace MikuMikuWorld
 
 	std::string_view getNoteSE(const Note& note, const Score& score)
 	{
+		if (note.dummy)
+			return "";
+
 		if (note.soundEffect != SoundEffectType::Default)
 		{
 			switch (note.soundEffect)
@@ -193,7 +196,7 @@ namespace MikuMikuWorld
 			case SoundEffectType::CritTick:
 				return SE_CRITICAL_TICK;
 			case SoundEffectType::Damage:
-				return SE_DAMAGE;
+				return "";
 			}
 		}
 

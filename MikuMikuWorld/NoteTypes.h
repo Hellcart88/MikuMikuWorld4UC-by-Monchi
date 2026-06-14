@@ -98,10 +98,15 @@ namespace MikuMikuWorld
 	{
 		Top,
 		Bottom,
+		Under,
+		Over,
 		LayerCount
 	};
 
-	constexpr const char* holdStepLayers[]{ "hold_step_layer_top", "hold_step_layer_bottom" };
+	constexpr const char* holdStepLayers[]{
+		"hold_step_layer_top", "hold_step_layer_bottom",
+		"hold_step_layer_under", "hold_step_layer_over"
+	};
 
 	enum class GuideColor : uint8_t
 	{

@@ -91,6 +91,7 @@ namespace MikuMikuWorld
 		bool hasEase() const;
 		bool canFlick() const;
 		bool canTrace() const;
+		constexpr bool canSoundEffect() const { return !dummy; }
 	};
 
 	struct HoldStep
