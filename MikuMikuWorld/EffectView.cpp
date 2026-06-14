@@ -249,10 +249,6 @@ namespace MikuMikuWorld::Effect
 			float noteTime = accumulateDuration(note.tick, TICKS_PER_BEAT, context.score.tempoChanges);
 			if (isMidHold || isWithinRange(currentTime, noteTime - 0.02f, noteTime + 0.04f))
 			{
-				const int hideNotesTick = isMidHold ? static_cast<int>(currentTick) : note.tick;
-				if (isHideNotesActive(context.score, note.layer, hideNotesTick))
-					continue;
-
 				addNoteEffects(note, context, noteTime);
 				playedEffectsNoteIds.insert(id);
 			}
@@ -513,10 +509,21 @@ namespace MikuMikuWorld::Effect
 					continue;
 
 				const Note& refNote = context.score.notes.at(controller.refID);
-				controller.visible =
+				const bool visible =
 				    !isHideNotesActive(context.score, refNote.layer, context.currentTick);
-				if (!controller.visible)
+				if (!visible)
+				{
+					if (controller.visible)
+						controller.effectRoot.stop(true);
+					controller.visible = false;
 					continue;
+				}
+				if (!controller.visible)
+				{
+					controller.effectRoot.stop(true);
+					controller.effectRoot.start(time);
+					controller.visible = true;
+				}
 
 				float noteLeft{}, noteRight{};
 				std::tie(noteLeft, noteRight) =

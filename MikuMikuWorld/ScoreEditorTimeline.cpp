@@ -3332,10 +3332,6 @@ namespace MikuMikuWorld
 			{
 				playSE = false;
 			}
-			if (isHideNotesActive(context.score, note.layer, note.tick))
-			{
-				playSE = false;
-			}
 
 			if (playSE)
 			{
@@ -3378,7 +3374,10 @@ namespace MikuMikuWorld
 				if (adjustedEndTime <= adjustedStartTime)
 					continue;
 
-				context.audio.playSoundEffect(se.data(), adjustedStartTime, adjustedEndTime, time);
+				const float engineTime = context.audio.getAudioEngineAbsoluteTime();
+				const float scheduledEndTime =
+				    adjustedEndTime + playbackSpeed * (adjustedStartTime - engineTime);
+				context.audio.playSoundEffect(se.data(), adjustedStartTime, scheduledEndTime, time);
 			}
 		};
 
