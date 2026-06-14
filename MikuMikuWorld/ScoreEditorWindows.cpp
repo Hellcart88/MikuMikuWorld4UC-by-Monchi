@@ -160,17 +160,15 @@ namespace MikuMikuWorld
 			
 			UI::propertyLabel(getString("beat"));
 			ImGui::SetNextItemWidth(-1);
-			
-			// MMWでは4分音符=1拍(Beat)として扱うため、4.0 / Division で1ステップの拍数を計算
+
 			double step = 4.0 / (currentDivision > 0 ? currentDivision : 4);
-			double step_fast = step * 4.0; // Shiftキーを押しながらの高速移動用
+			double step_fast = step * 4.0;
 			
 			bool beatChanged = ImGui::InputDouble(IO::concat("##", getString("beat")).c_str(), &beat, step, step_fast, "%.3f");
 			ImGui::NextColumn();
 
 			if (beatChanged)
 			{
-				// 浮動小数点数の微細な誤差を防ぐため floor から round に変更
 				auto newTick = std::round(beat * TICKS_PER_BEAT); 
 				for (auto& id : context.selectedNotes)
 				{
@@ -1836,9 +1834,6 @@ namespace MikuMikuWorld
 			ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
 			float layersButtonHeight = ImGui::GetFrameHeight();
 
-			// =====================================================================
-			// 上部アイコンバー
-			// =====================================================================
 			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 4));
 
 			bool showAllLayers = context.showAllLayers;
@@ -1853,7 +1848,7 @@ namespace MikuMikuWorld
 			if (UI::transparentButton(ICON_FA_PLUS, ImVec2(layersButtonHeight, layersButtonHeight), false))
 			{
 				Layer newLayer;
-				newLayer.name = getString("new_layer"); // 日本語化
+				newLayer.name = getString("new_layer");
 				newLayer.isFolder = false;
 				context.score.layers.push_back(newLayer);
 				
@@ -1870,7 +1865,7 @@ namespace MikuMikuWorld
 			if (UI::transparentButton(ICON_FA_FOLDER_PLUS, ImVec2(layersButtonHeight, layersButtonHeight), false))
 			{
 				Layer newLayer;
-				newLayer.name = getString("new_folder"); // 日本語化
+				newLayer.name = getString("new_folder");
 				newLayer.isFolder = true;
 				context.score.layers.push_back(newLayer);
 				
@@ -1900,7 +1895,6 @@ namespace MikuMikuWorld
 
 			ImGui::PopStyleVar();
 			ImGui::Separator();
-			// =====================================================================
 
 			if (context.selectedLayer >= 0 && context.selectedLayer < context.score.layers.size() &&
 			    !context.score.layers[context.selectedLayer].isFolder)
@@ -2217,9 +2211,6 @@ namespace MikuMikuWorld
 				context.pushHistory("Toggle Solo Layer", prev, context.score);
 			}
 
-			// =====================================================================
-			// 日本語化されたポップアップ
-			// =====================================================================
 			if (ImGui::BeginPopupModal(getString("layer_delete_confirm"), NULL, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
 			{
 				ImGui::Text("%s", getString("layer_delete_msg1"));
@@ -2368,7 +2359,7 @@ namespace MikuMikuWorld
 			if (renameIndex == -2)
 				ImGui::Text("Folder Name");
 			else
-				ImGui::Text("%s", getString("layer_name")); // 余計な .c_str() を削除
+				ImGui::Text("%s", getString("layer_name"));
 
 			ImGui::SetNextItemWidth(-1);
 			ImGui::InputText("##layer_name", &layerName);
@@ -2378,7 +2369,7 @@ namespace MikuMikuWorld
 			              ImGui::GetFrameHeight() };
 			ImGui::SetCursorPos(ImVec2(xPos, yPos));
 			
-			if (ImGui::Button(getString("cancel"), btnSz)) // 余計な .c_str() を削除
+			if (ImGui::Button(getString("cancel"), btnSz))
 			{
 				result = DialogResult::Cancel;
 				ImGui::CloseCurrentPopup();
@@ -2388,7 +2379,7 @@ namespace MikuMikuWorld
 			ImGui::PushItemFlag(ImGuiItemFlags_Disabled, !layerName.size());
 			ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 1 - (0.5f * !layerName.size()));
 			
-			if (ImGui::Button(getString("confirm"), btnSz)) // 余計な .c_str() を削除
+			if (ImGui::Button(getString("confirm"), btnSz))
 			{
 				result = DialogResult::Ok;
 				ImGui::CloseCurrentPopup();
