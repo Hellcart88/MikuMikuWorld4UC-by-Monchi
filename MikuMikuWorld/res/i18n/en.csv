@@ -402,3 +402,6 @@ fever_start_tick,FEVER Start Tick
 fever_end_tick,FEVER End Tick
 layer_force_note_speed_enabled,Force Note Speed
 layer_force_note_speed,Force Note Speed
+insert_skill,Insert Skill
+set_fever_start,Set FEVER Start
+set_fever_end,Set FEVER End

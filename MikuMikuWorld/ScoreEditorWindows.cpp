@@ -1887,15 +1887,17 @@ namespace MikuMikuWorld
 			if (context.selectedLayer >= 0 && context.selectedLayer < context.score.layers.size() &&
 			    !context.score.layers[context.selectedLayer].isFolder)
 			{
-				Layer& selectedLayer = context.score.layers[context.selectedLayer];
+				const int selectedLayerIndex = context.selectedLayer;
+				const Layer& selectedLayer = context.score.layers[selectedLayerIndex];
 				bool forceNoteSpeedEnabled = selectedLayer.forceNoteSpeed >= 1.0f &&
 				                             selectedLayer.forceNoteSpeed <= 12.0f;
 				float forceNoteSpeed = forceNoteSpeedEnabled ? selectedLayer.forceNoteSpeed : 6.0f;
 				bool forceNoteSpeedEdited = false;
 
 				UI::beginPropertyColumns();
-				forceNoteSpeedEdited |= UI::addCheckboxProperty(
-				    getString("layer_force_note_speed_enabled"), forceNoteSpeedEnabled);
+				UI::propertyLabel(getString("layer_force_note_speed_enabled"));
+				forceNoteSpeedEdited |= ImGui::Checkbox("##layer_force_note_speed_enabled", &forceNoteSpeedEnabled);
+				ImGui::NextColumn();
 				if (forceNoteSpeedEnabled)
 				{
 					forceNoteSpeedEdited |= UI::addFloatProperty(
@@ -1905,13 +1907,18 @@ namespace MikuMikuWorld
 
 				if (forceNoteSpeedEdited)
 				{
+					if (forceNoteSpeed < 1.0f)
+						forceNoteSpeed = 1.0f;
+					else if (forceNoteSpeed > 12.0f)
+						forceNoteSpeed = 12.0f;
+
 					Score prev = context.score;
-					selectedLayer.forceNoteSpeed = forceNoteSpeedEnabled ? forceNoteSpeed : 0.0f;
+					context.score.layers[selectedLayerIndex].forceNoteSpeed =
+					    forceNoteSpeedEnabled ? forceNoteSpeed : 0.0f;
 					context.pushHistory("Change layer force note speed", prev, context.score);
 				}
 				ImGui::Separator();
 			}
-
 			float windowHeight = ImGui::GetContentRegionAvail().y - ImGui::GetStyle().WindowPadding.y;
 
 			if (ImGui::BeginChild("layers_child_window", ImVec2(-1, windowHeight), true))
@@ -2442,6 +2449,39 @@ namespace MikuMikuWorld
 			UI::tooltip(getString("delete"));
 
 			ImGui::PopStyleVar();
+			ImGui::Separator();
+
+			if (ImGui::Button(getString("insert_skill"), ImVec2(-1, waypointButtonHeight)))
+			{
+				Score prev = context.score;
+				id_t id = getNextSkillID();
+				context.score.skills.emplace(id, SkillTrigger{ id, context.currentTick, SkillEffect::Score, static_cast<uint8_t>(1) });
+				context.pushHistory("Insert skill", prev, context.score);
+			}
+
+			ImVec2 halfBtnSize = {
+				(ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2,
+				waypointButtonHeight
+			};
+			if (ImGui::Button(getString("set_fever_start"), halfBtnSize))
+			{
+				if (context.score.fever.startTick != context.currentTick)
+				{
+					Score prev = context.score;
+					context.score.fever.startTick = context.currentTick;
+					context.pushHistory("Set fever start", prev, context.score);
+				}
+			}
+			ImGui::SameLine();
+			if (ImGui::Button(getString("set_fever_end"), halfBtnSize))
+			{
+				if (context.score.fever.endTick != context.currentTick)
+				{
+					Score prev = context.score;
+					context.score.fever.endTick = context.currentTick;
+					context.pushHistory("Set fever end", prev, context.score);
+				}
+			}
 			ImGui::Separator();
 
 			float windowHeight = ImGui::GetContentRegionAvail().y - ImGui::GetStyle().WindowPadding.y;

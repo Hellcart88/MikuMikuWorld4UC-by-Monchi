@@ -945,8 +945,14 @@ namespace MikuMikuWorld
 				hold.steps.clear();
 
 				// 時間（Scaled Duration）の取得
-				double stm0 = Engine::accumulateScaledDuration(tickStart, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, note.layer);
-				double stm1 = Engine::accumulateScaledDuration(tickEnd, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, endNote.layer);
+				double stm0 = Engine::accumulateScaledDuration(
+				    tickStart, TICKS_PER_BEAT, context.score.tempoChanges,
+				    context.score.hiSpeedChanges, note.layer,
+				    Engine::getLayerForceNoteSpeed(context.score, note.layer));
+				double stm1 = Engine::accumulateScaledDuration(
+				    tickEnd, TICKS_PER_BEAT, context.score.tempoChanges,
+				    context.score.hiSpeedChanges, endNote.layer,
+				    Engine::getLayerForceNoteSpeed(context.score, endNote.layer));
 				
 				float noteDuration = Engine::getNoteDuration(config.pvNoteSpeed);
 				
@@ -976,7 +982,10 @@ namespace MikuMikuWorld
 
 				for (int t = tickStart + resolution; t < tickEnd; t += resolution)
 				{
-					double stm_mid = Engine::accumulateScaledDuration(t, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, note.layer);
+					double stm_mid = Engine::accumulateScaledDuration(
+					    t, TICKS_PER_BEAT, context.score.tempoChanges,
+					    context.score.hiSpeedChanges, note.layer,
+					    Engine::getLayerForceNoteSpeed(context.score, note.layer));
 					double y_mid = std::pow(1.06, 45.0 * (stm0 - stm_mid) / noteDuration);
 					
 					float lane_mid = (float)(ALane + BLane / y_mid);

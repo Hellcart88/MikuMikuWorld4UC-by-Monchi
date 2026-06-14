@@ -23,11 +23,12 @@ namespace MikuMikuWorld
 	constexpr const char* SE_CRITICAL_TICK = "critical_tick";
 	constexpr const char* SE_CRITICAL_FRICTION = "critical_friction";
 	constexpr const char* SE_CRITICAL_CONNECT = "critical_connect";
+	constexpr const char* SE_DAMAGE = "damage";
 
 	constexpr const char* SE_NAMES[] = { SE_PERFECT,         SE_FLICK,         SE_TICK,
 		                                 SE_FRICTION,        SE_CONNECT,       SE_CRITICAL_TAP,
 		                                 SE_CRITICAL_FLICK,  SE_CRITICAL_TICK, SE_CRITICAL_FRICTION,
-		                                 SE_CRITICAL_CONNECT };
+		                                 SE_CRITICAL_CONNECT, SE_DAMAGE };
 
 	constexpr float flickArrowWidths[] = { 0.95f, 1.25f, 1.8f, 2.3f, 2.6f, 3.2f };
 

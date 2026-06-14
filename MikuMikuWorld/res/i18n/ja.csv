@@ -405,3 +405,6 @@ fever_start_tick,FEVER開始Tick
 fever_end_tick,FEVER終了Tick
 layer_force_note_speed_enabled,ノーツ速度固定
 layer_force_note_speed,ノーツ速度固定
+insert_skill,スキルを追加
+set_fever_start,FEVER開始を設定
+set_fever_end,FEVER終了を設定

@@ -70,7 +70,9 @@ namespace MikuMikuWorld
 			return context.scorePreviewDrawData.hsCache[layer].getStm(tick);
 		}
 
-		return Engine::accumulateScaledDuration(tick, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, layer);
+		return Engine::accumulateScaledDuration(
+		    tick, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, layer,
+		    Engine::getLayerForceNoteSpeed(context.score, layer));
 	}
 
 	static std::vector<double> getCurrentLayerScaledTimes(const ScoreContext& context)
@@ -926,6 +928,8 @@ namespace MikuMikuWorld
 			auto model = DirectX::XMMatrixIdentity();
 			float baseAlpha = segment.isGuide ? config.pvGuideAlpha : config.pvHoldAlpha;
 			int zIndex = Engine::getZIndex(segment.isGuide ? SpriteLayer::GUIDE_PATH : SpriteLayer::HOLD_PATH, holdStartCenter, segment.activeTime / total_tm);
+			if (segment.stepLayer == HoldStepLayer::Bottom)
+				zIndex -= 1 << 28;
 	
 			for (int i = 0; i < steps; i++)
 			{
