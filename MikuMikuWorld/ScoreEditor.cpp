@@ -8,12 +8,16 @@
 #include "Audio/Sound.h"
 #include "Constants.h"
 #include "File.h"
+#include "IO.h"
 #include "Rendering/Texture.h"
 #include "SUS.h"
 #include "NativeScoreSerializer.h"
 #include "UI.h"
 #include "Utilities.h"
 #include "PreviewEngine.h"
+#include <algorithm>
+#include <array>
+#include <cctype>
 #include <iomanip>
 #include <Windows.h>
 #include <shobjidl.h>
@@ -41,51 +45,99 @@ namespace MikuMikuWorld
 
 	constexpr const char* UPDATE_API_HOST = "https://api.github.com";
 	constexpr const char* UPDATE_API_PATH = "/repos/monti114514/MikuMikuWorld4UC-by-Monchi/releases/latest";
+	constexpr bool INCLUDE_PRERELEASE_UPDATES = false;
 
-	std::string normalizeVersionTag(std::string tag)
+	struct ParsedVersion
 	{
-		if (!tag.empty() && (tag[0] == 'v' || tag[0] == 'V'))
-			tag.erase(tag.begin());
+		std::array<int, 4> parts{};
+		bool prerelease{};
+		bool valid{};
+		std::string normalized;
+	};
+
+	std::string trimVersionTag(std::string tag)
+	{
+		tag.erase(tag.begin(),
+		          std::find_if(tag.begin(), tag.end(), [](unsigned char c)
+		          { return !std::isspace(c); }));
+		tag.erase(std::find_if(tag.rbegin(), tag.rend(), [](unsigned char c)
+		          { return !std::isspace(c); }).base(),
+		          tag.end());
 
 		return tag;
 	}
 
-	std::vector<int> parseVersionParts(const std::string& version)
+	std::string formatVersion(const std::array<int, 4>& parts)
 	{
-		std::vector<int> parts;
-		auto split = Utilities::splitString(version, '.');
+		std::string version = IO::formatString("%d.%d.%d", parts[0], parts[1], parts[2]);
+		if (parts[3] != 0)
+			version += IO::formatString(".%d", parts[3]);
 
-		for (const auto& part : split)
+		return version;
+	}
+
+	ParsedVersion parseVersionTag(std::string tag)
+	{
+		ParsedVersion version{};
+		tag = trimVersionTag(tag);
+
+		if (!tag.empty() && (tag[0] == 'v' || tag[0] == 'V'))
+			tag.erase(tag.begin());
+
+		const size_t metadataStart = tag.find('+');
+		if (metadataStart != std::string::npos)
+			tag.erase(metadataStart);
+
+		const size_t prereleaseStart = tag.find('-');
+		if (prereleaseStart != std::string::npos)
 		{
+			version.prerelease = true;
+			tag.erase(prereleaseStart);
+		}
+
+		auto split = Utilities::splitString(tag, '.');
+		if (split.size() != 3 && split.size() != 4)
+			return version;
+
+		for (size_t i = 0; i < split.size(); ++i)
+		{
+			const std::string& part = split[i];
+			if (part.empty() || !std::all_of(part.begin(), part.end(), [](unsigned char c)
+			    { return std::isdigit(c); }))
+				return version;
+
 			try
 			{
-				parts.push_back(std::stoi(part));
+				version.parts[i] = std::stoi(part);
 			}
 			catch (...)
 			{
-				parts.push_back(0);
+				return version;
 			}
 		}
 
-		return parts;
+		version.valid = true;
+		version.normalized = formatVersion(version.parts);
+		return version;
 	}
 
 	bool isNewerVersion(const std::string& latestVersionString,
-	                    const std::string& currentVersionString)
+	                    const std::string& currentVersionString,
+	                    bool includePrerelease = INCLUDE_PRERELEASE_UPDATES)
 	{
-		auto latestVersion = parseVersionParts(latestVersionString);
-		auto currentVersion = parseVersionParts(currentVersionString);
+		const ParsedVersion latestVersion = parseVersionTag(latestVersionString);
+		const ParsedVersion currentVersion = parseVersionTag(currentVersionString);
+		if (!latestVersion.valid || !currentVersion.valid)
+			return false;
+		if (latestVersion.prerelease && !includePrerelease)
+			return false;
 
-		const size_t count = std::max(latestVersion.size(), currentVersion.size());
-		latestVersion.resize(count, 0);
-		currentVersion.resize(count, 0);
-
-		for (size_t i = 0; i < count; ++i)
+		for (size_t i = 0; i < latestVersion.parts.size(); ++i)
 		{
-			if (latestVersion[i] > currentVersion[i])
+			if (latestVersion.parts[i] > currentVersion.parts[i])
 				return true;
 
-			if (latestVersion[i] < currentVersion[i])
+			if (latestVersion.parts[i] < currentVersion.parts[i])
 				return false;
 		}
 
@@ -129,60 +181,83 @@ namespace MikuMikuWorld
 
 	void ScoreEditor::fetchUpdate()
 	{
-	httplib::Client client(UPDATE_API_HOST);
+		httplib::Client client(UPDATE_API_HOST);
 
-	std::cout << "Fetching latest update information" << std::endl;
+		std::cout << "Fetching latest update information" << std::endl;
 
-	auto res = client.Get(UPDATE_API_PATH);
-	if (!res)
-	{
-		std::cerr << "Failed to fetch latest update: client.Get failed" << std::endl;
-		return;
-	}
-
-	std::cout << "Status: " << res->status << std::endl;
-
-	if (res->status != 200)
-	{
-		std::cerr << "Failed to fetch latest update: HTTP " << res->status << std::endl;
-		return;
-	}
-
-	std::string latestVersionString;
-
-	try
-	{
-		auto parsed = nlohmann::json::parse(res->body);
-
-		if (!parsed.contains("tag_name") || !parsed["tag_name"].is_string())
+		auto res = client.Get(UPDATE_API_PATH);
+		if (!res)
 		{
-			std::cerr << "Failed to fetch latest update: tag_name not found" << std::endl;
+			std::cerr << "Failed to fetch latest update: client.Get failed" << std::endl;
 			return;
 		}
 
-		latestVersionString = normalizeVersionTag(parsed["tag_name"].get<std::string>());
+		std::cout << "Status: " << res->status << std::endl;
+
+		if (res->status != 200)
+		{
+			std::cerr << "Failed to fetch latest update: HTTP " << res->status << std::endl;
+			return;
+		}
+
+		ParsedVersion latestVersion;
+
+		try
+		{
+			auto parsed = nlohmann::json::parse(res->body);
+
+			if (!parsed.contains("tag_name") || !parsed["tag_name"].is_string())
+			{
+				std::cerr << "Failed to fetch latest update: tag_name not found" << std::endl;
+				return;
+			}
+
+			const bool isPrerelease =
+			    parsed.contains("prerelease") && parsed["prerelease"].is_boolean() &&
+			    parsed["prerelease"].get<bool>();
+			if (isPrerelease && !INCLUDE_PRERELEASE_UPDATES)
+			{
+				std::cout << "Latest release is a prerelease; skipping update notification"
+				          << std::endl;
+				return;
+			}
+
+			latestVersion = parseVersionTag(parsed["tag_name"].get<std::string>());
+			if (!latestVersion.valid)
+			{
+				std::cerr << "Failed to fetch latest update: invalid tag_name" << std::endl;
+				return;
+			}
+
+			if (latestVersion.prerelease && !INCLUDE_PRERELEASE_UPDATES)
+			{
+				std::cout << "Latest release tag is a prerelease; skipping update notification"
+				          << std::endl;
+				return;
+			}
+		}
+		catch (const std::exception& e)
+		{
+			std::cerr << "Failed to parse latest update response: " << e.what() << std::endl;
+			return;
+		}
+
+		const std::string currentVersionString = Application::getAppVersion();
+		const std::string latestVersionString = latestVersion.normalized;
+
+		std::cout << "Current version: " << currentVersionString << std::endl;
+		std::cout << "Latest version: " << latestVersionString << std::endl;
+
+		if (isNewerVersion(latestVersionString, currentVersionString))
+		{
+			std::cout << "Update available" << std::endl;
+			updateAvailableDialog.latestVersion = latestVersionString;
+			updateAvailableDialog.open = true;
+			return;
+		}
+
+		std::cout << "No update" << std::endl;
 	}
-	catch (const std::exception& e)
-	{
-		std::cerr << "Failed to parse latest update response: " << e.what() << std::endl;
-		return;
-	}
-
-	const std::string currentVersionString = Application::getAppVersion();
-
-	std::cout << "Current version: " << currentVersionString << std::endl;
-	std::cout << "Latest version: " << latestVersionString << std::endl;
-
-	if (isNewerVersion(latestVersionString, currentVersionString))
-	{
-		std::cout << "Update available" << std::endl;
-		updateAvailableDialog.latestVersion = latestVersionString;
-		updateAvailableDialog.open = true;
-		return;
-	}
-
-	std::cout << "No update" << std::endl;
-}
 
 	void ScoreEditor::writeSettings()
 	{
