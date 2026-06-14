@@ -40,9 +40,11 @@ namespace MikuMikuWorld::Engine
 		{
 			hsCache.clear();
 			hsCache.resize(score.layers.size());
+			layerForceNoteSpeeds.resize(score.layers.size());
 			for (int layer = 0; layer < score.layers.size(); ++layer)
 			{
 				const float layerForceNoteSpeed = getLayerForceNoteSpeed(score, layer);
+				layerForceNoteSpeeds[layer] = layerForceNoteSpeed;
 				std::vector<HiSpeedChange> hsList;
 				for (const auto& [id, hs] : score.hiSpeedChanges)
 					if (hs.layer == layer) hsList.push_back(hs);
@@ -62,7 +64,7 @@ namespace MikuMikuWorld::Engine
 				// 蜷・｢・阜轤ｹ縺ｫ縺翫￠繧九梧ｭ｣遒ｺ縺ｪ隕冶ｦ夂噪譎る俣縲阪→縲梧ｬ｡縺ｮ蠅・阜縺ｾ縺ｧ縺ｮ騾溷ｺｦ縲阪ｒ險育ｮ励＠縺ｦ菫晏ｭ・
 				for (int tick : boundaries)
 				{
-					double stm = accumulateScaledDuration(tick, TICKS_PER_BEAT, score.tempoChanges, score.hiSpeedChanges, layer, layerForceNoteSpeed);
+					double stm = accumulateScaledDuration(tick, TICKS_PER_BEAT, score.tempoChanges, score.hiSpeedChanges, layer);
 					
 					double bpm = 120.0;
 					for (auto it = score.tempoChanges.rbegin(); it != score.tempoChanges.rend(); ++it)
@@ -71,8 +73,6 @@ namespace MikuMikuWorld::Engine
 					double speed = 1.0;
 					for (auto it = hsList.rbegin(); it != hsList.rend(); ++it)
 						if (it->tick <= tick) { speed = it->speed; break; }
-					if (layerForceNoteSpeed >= 1.0f && layerForceNoteSpeed <= 12.0f)
-						speed = layerForceNoteSpeed;
 
 					double speedPerTick = (60.0 / bpm) * speed / TICKS_PER_BEAT;
 					hsCache[layer].nodes.push_back({ tick, stm, speedPerTick });
@@ -155,6 +155,7 @@ namespace MikuMikuWorld::Engine
 		drawingNotes.clear();
 		drawingHoldTicks.clear();
 		drawingHoldSegments.clear();
+		layerForceNoteSpeeds.clear();
 
 		maxTicks = 1;
 	}
@@ -167,12 +168,12 @@ namespace MikuMikuWorld::Engine
 		if (startNote.layer >= 0 && startNote.layer < score.layers.size() && score.layers[startNote.layer].hidden)
 			return;
 
-		float noteDuration = getNoteDuration(drawData.noteSpeed);
+		float noteDuration = getNoteDuration(getLayerEffectiveNoteSpeed(score, startNote.layer, drawData.noteSpeed));
 		float activeTime = accumulateDuration(startNote.tick, TICKS_PER_BEAT, score.tempoChanges);
 		float startTime = activeTime;
 		DrawingHoldStep head = {
 			startNote.tick,
-			accumulateScaledDuration(startNote.tick, TICKS_PER_BEAT, score.tempoChanges, score.hiSpeedChanges, startNote.layer, getLayerForceNoteSpeed(score, startNote.layer)),
+			accumulateScaledDuration(startNote.tick, TICKS_PER_BEAT, score.tempoChanges, score.hiSpeedChanges, startNote.layer),
 			Engine::laneToLeft(startNote.lane),
 			Engine::laneToLeft(startNote.lane) + startNote.width,
 			holdNote.start.ease,
@@ -188,7 +189,7 @@ namespace MikuMikuWorld::Engine
 			auto easeFunction = getEaseFunction(head.ease);
 			DrawingHoldStep tail = {
 				tailNote.tick,
-				accumulateScaledDuration(tailNote.tick, TICKS_PER_BEAT, score.tempoChanges, score.hiSpeedChanges, startNote.layer, getLayerForceNoteSpeed(score, startNote.layer)),
+				accumulateScaledDuration(tailNote.tick, TICKS_PER_BEAT, score.tempoChanges, score.hiSpeedChanges, startNote.layer),
 				Engine::laneToLeft(tailNote.lane),
 				Engine::laneToLeft(tailNote.lane) + tailNote.width,
 				tailStep.ease,
@@ -221,7 +222,7 @@ namespace MikuMikuWorld::Engine
 				const Note& skipNote = score.notes.at(skipStep.ID);
 				if (skipNote.tick > tail.tick)
 					break;
-				double tickTime = accumulateScaledDuration(skipNote.tick, TICKS_PER_BEAT, score.tempoChanges, score.hiSpeedChanges, startNote.layer, getLayerForceNoteSpeed(score, startNote.layer));
+				double tickTime = accumulateScaledDuration(skipNote.tick, TICKS_PER_BEAT, score.tempoChanges, score.hiSpeedChanges, startNote.layer);
 				double tick_t = unlerpD(head.tick, tail.tick, skipNote.tick);
 				float skipLeft = easeFunction(head.left, tail.left, tick_t);
 				float skipRight = easeFunction(head.right, tail.right, tick_t);
@@ -237,7 +238,7 @@ namespace MikuMikuWorld::Engine
 			}
 			if (tailStep.type != HoldStepType::Hidden)
 			{
-				double tickTime = accumulateScaledDuration(tailNote.tick, TICKS_PER_BEAT, score.tempoChanges, score.hiSpeedChanges, startNote.layer, getLayerForceNoteSpeed(score, startNote.layer));
+				double tickTime = accumulateScaledDuration(tailNote.tick, TICKS_PER_BEAT, score.tempoChanges, score.hiSpeedChanges, startNote.layer);
 				drawData.drawingHoldTicks.push_back(DrawingHoldTick{
 					tailNote.ID,
 					getNoteCenter(tailNote),

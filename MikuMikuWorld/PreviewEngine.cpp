@@ -35,9 +35,8 @@ namespace MikuMikuWorld
 namespace MikuMikuWorld::Engine
 {
 	// ハイスピード対応の心臓部（レイヤー対応・NextRUSH+互換版）
-	double accumulateScaledDuration(int tick, int beatTicks, const std::vector<Tempo>& tempos, const std::unordered_map<id_t, HiSpeedChange>& hiSpeeds, int layer, float forceNoteSpeed)
+	double accumulateScaledDuration(int tick, int beatTicks, const std::vector<Tempo>& tempos, const std::unordered_map<id_t, HiSpeedChange>& hiSpeeds, int layer)
 	{
-		const bool useForceNoteSpeed = forceNoteSpeed >= 1.0f && forceNoteSpeed <= 12.0f;
 
 		// 1. unordered_mapからvectorに変換し、指定されたlayerに一致するハイスピードのみを抽出する
 		std::vector<HiSpeedChange> hsList;
@@ -51,8 +50,7 @@ namespace MikuMikuWorld::Engine
 		// そのレイヤーにハイスピード変化が一つもなければ、BPMのみの通常計算を返す
 		if (hsList.empty())
 		{
-			const double duration = accumulateDuration(tick, beatTicks, tempos);
-			return useForceNoteSpeed ? duration * forceNoteSpeed : duration;
+			return accumulateDuration(tick, beatTicks, tempos);
 		}
 
 		std::stable_sort(hsList.begin(), hsList.end(), [](const HiSpeedChange& a, const HiSpeedChange& b) {
@@ -148,8 +146,6 @@ namespace MikuMikuWorld::Engine
 				}
 			}
 
-			if (useForceNoteSpeed)
-				avgSpeed = forceNoteSpeed;
 
 			// 仮想時間(Scaled Time)を進める：(物理経過時間) * (その区間の平均速度)
 			scaledDuration += deltaTime * avgSpeed;
@@ -164,10 +160,9 @@ namespace MikuMikuWorld::Engine
 	Range getNoteVisualTime(Note const& note, Score const& score, float noteSpeed)
 	{
 		//  事前計算時に、そのノーツが所属するレイヤーのハイスピードを適用する
-		const float forceNoteSpeed = getLayerForceNoteSpeed(score, note.layer);
 		double targetTime = accumulateScaledDuration(note.tick, TICKS_PER_BEAT, score.tempoChanges,
-		                                             score.hiSpeedChanges, note.layer, forceNoteSpeed);
-		return {targetTime - getNoteDuration(noteSpeed), targetTime};
+		                                             score.hiSpeedChanges, note.layer);
+		return {targetTime - getNoteDuration(getLayerEffectiveNoteSpeed(score, note.layer, noteSpeed)), targetTime};
 	}
 
 	std::array<DirectX::XMFLOAT4, 4> quadvPos(float left, float right, float top, float bottom)

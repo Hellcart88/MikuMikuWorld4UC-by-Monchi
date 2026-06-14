@@ -87,6 +87,7 @@ namespace MikuMikuWorld::Engine
 		std::vector<DrawingHoldSegment> drawingHoldSegments;
 
 		std::vector<LayerHiSpeedCache> hsCache;
+		std::vector<float> layerForceNoteSpeeds;
 
 		Effect::EffectView effectView;
 

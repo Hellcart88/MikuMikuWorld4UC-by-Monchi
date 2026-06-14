@@ -71,8 +71,7 @@ namespace MikuMikuWorld
 		}
 
 		return Engine::accumulateScaledDuration(
-		    tick, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, layer,
-		    Engine::getLayerForceNoteSpeed(context.score, layer));
+		    tick, TICKS_PER_BEAT, context.score.tempoChanges, context.score.hiSpeedChanges, layer);
 	}
 
 	static std::vector<double> getCurrentLayerScaledTimes(const ScoreContext& context)
@@ -279,6 +278,22 @@ namespace MikuMikuWorld
 
 		if (context.scorePreviewDrawData.noteSpeed != config.pvNoteSpeed)
 			needsRecalc = true;
+
+		if (!needsRecalc
+			&& context.scorePreviewDrawData.layerForceNoteSpeeds.size() != context.score.layers.size())
+			needsRecalc = true;
+
+		if (!needsRecalc)
+		{
+			for (int layer = 0; layer < static_cast<int>(context.score.layers.size()); ++layer)
+			{
+				if (context.scorePreviewDrawData.layerForceNoteSpeeds[layer] != Engine::getLayerForceNoteSpeed(context.score, layer))
+				{
+					needsRecalc = true;
+					break;
+				}
+			}
+		}
 
 		if (!needsRecalc && !context.score.notes.empty() && context.scorePreviewDrawData.drawingNotes.empty())
 			needsRecalc = true;
@@ -620,8 +635,6 @@ namespace MikuMikuWorld
 	
 	float texW = (float)texture.getWidth();
 	float texH = (float)texture.getHeight();
-	float noteDuration = Engine::getNoteDuration(config.pvNoteSpeed);
-
 	// ★ 純正と完全に同じ計算式 (1 + h と 1 - h) に戻して裏返りを修正
 	const float noteTop = 1.0f + Engine::getNoteHeight();
 	const float noteBottom = 1.0f - Engine::getNoteHeight();
@@ -637,8 +650,13 @@ namespace MikuMikuWorld
 		double current_left_stm = getCachedLayerScaledTime(context, context.currentTick, line.leftLayer);
 		double current_right_stm = getCachedLayerScaledTime(context, context.currentTick, line.rightLayer);
 
-		double left_progress = 1.0 - (left_stm - current_left_stm) / noteDuration;
-		double right_progress = 1.0 - (right_stm - current_right_stm) / noteDuration;
+		const float leftNoteDuration = Engine::getNoteDuration(
+			Engine::getLayerEffectiveNoteSpeed(context.score, line.leftLayer, config.pvNoteSpeed));
+		const float rightNoteDuration = Engine::getNoteDuration(
+			Engine::getLayerEffectiveNoteSpeed(context.score, line.rightLayer, config.pvNoteSpeed));
+
+		double left_progress = 1.0 - (left_stm - current_left_stm) / leftNoteDuration;
+		double right_progress = 1.0 - (right_stm - current_right_stm) / rightNoteDuration;
 
 		if (left_progress < 0.0 && right_progress < 0.0) continue;
 		if ((left_progress < 1.0 && 1.0 < right_progress) || (left_progress > 1.0 && 1.0 > right_progress)) continue;
@@ -761,7 +779,6 @@ namespace MikuMikuWorld
 	{
 		const float total_tm = accumulateDuration(context.scorePreviewDrawData.maxTicks, TICKS_PER_BEAT, context.score.tempoChanges);
 		const double current_tm = accumulateDuration(context.currentTick, TICKS_PER_BEAT, context.score.tempoChanges);
-		const float noteDuration = Engine::getNoteDuration(config.pvNoteSpeed);
 		const float mirror = config.pvMirrorScore ? -1 : 1;
 		const auto& drawData = context.scorePreviewDrawData;
 		const auto layer_stm = getCurrentLayerScaledTimes(context);
@@ -781,6 +798,8 @@ namespace MikuMikuWorld
 			
 			int layer = std::clamp(holdStart.layer, 0, (int)context.score.layers.size() - 1);
 			double current_stm = layer_stm[layer];
+			const float noteDuration = Engine::getNoteDuration(
+				Engine::getLayerEffectiveNoteSpeed(context.score, layer, config.pvNoteSpeed));
 	
 			if (current_tm >= segment.endTime)
 				continue;
