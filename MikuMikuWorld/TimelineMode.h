@@ -18,13 +18,15 @@ namespace MikuMikuWorld
 		InsertBPM,
 		InsertTimeSign,
 		InsertHiSpeed,
+		InsertSkill,
+		InsertFever,
 		TimelineModeMax
 	};
 
 	constexpr const char* timelineModes[]{ "select",  "tap",      "hold",  "hold_step",
 		                                   "flick",   "critical", "trace", "guide",
 		                                   "damage",  "dummy",  "bpm",   "time_signature",
-		                                   "hi_speed" };
+		                                   "hi_speed", "skill", "fever" };
 
 	constexpr int divisions[]{ 4, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 1920 };
 

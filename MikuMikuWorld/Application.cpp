@@ -326,6 +326,8 @@ namespace MikuMikuWorld
 		ResourceManager::loadTexture(texturesDir + "timeline_bpm.png");
 		ResourceManager::loadTexture(texturesDir + "timeline_time_signature.png");
 		ResourceManager::loadTexture(texturesDir + "timeline_hi_speed.png");
+		ResourceManager::loadTexture(texturesDir + "timeline_skill.png");
+		ResourceManager::loadTexture(texturesDir + "timeline_fever.png");
 		
 		// Cache note textures indices
 		noteTextures.notes = ResourceManager::getTexture(NOTES_TEX);

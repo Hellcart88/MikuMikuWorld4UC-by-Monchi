@@ -195,6 +195,7 @@ remove, Remover
 edit_time_signature, Cambiar signatura de compás
 measure, Compás
 skill, Habilidad
+fever, FEVER
 increase_note_size, Ampliar ancho de la nota
 decrease_note_size, Disminuir ancho de la nota
 hi_speed, Hi-speed

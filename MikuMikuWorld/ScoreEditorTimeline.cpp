@@ -183,6 +183,17 @@ namespace MikuMikuWorld
 		return ImRect({ x, position.y }, { x + width, position.y + size.y });
 	}
 
+	bool ScoreEditorTimeline::isMouseInFeverDisplayLane(const ScoreContext& context) const
+	{
+		const ImRect rect = getFeverDisplayRect(context);
+		return ImGui::IsMouseHoveringRect(rect.Min, rect.Max, false);
+	}
+
+	int ScoreEditorTimeline::getSnapStepTicks() const
+	{
+		return std::max(1, TICKS_PER_BEAT / (division / 4));
+	}
+
 	void ScoreEditorTimeline::drawLeftMetaEventClusters(ScoreContext& context)
 	{
 		const float dpiScale = ImGui::GetMainViewport()->DpiScale;
@@ -1418,12 +1429,21 @@ namespace MikuMikuWorld
 				context.cancelPaste();
 		}
 
-		if (mouseInTimeline && !isHoldingNote && currentMode != TimelineMode::Select && !pasting &&
-		    !playing && !UI::isAnyPopupOpen())
+		const bool handlingFeverInput =
+		    currentMode == TimelineMode::InsertFever && (mouseInTimeline || insertingFever);
+		if ((mouseInTimeline || handlingFeverInput) && !isHoldingNote &&
+		    currentMode != TimelineMode::Select && !pasting && !playing && !UI::isAnyPopupOpen())
 		{
-			previewInput(context, edit, renderer);
-			if (ImGui::IsMouseClicked(0) && hoverTick >= 0 && !isHoveringNote)
-				executeInput(context, edit);
+			if (currentMode == TimelineMode::InsertFever)
+			{
+				updateFeverInsertion(context);
+			}
+			else
+			{
+				previewInput(context, edit, renderer);
+				if (ImGui::IsMouseClicked(0) && hoverTick >= 0 && !isHoveringNote)
+					executeInput(context, edit);
+			}
 
 			if (insertingHold && !ImGui::IsMouseDown(0))
 			{
@@ -1434,6 +1454,7 @@ namespace MikuMikuWorld
 		else
 		{
 			insertingHold = false;
+			insertingFever = false;
 		}
 
 		renderer->endBatch();
@@ -1584,6 +1605,18 @@ namespace MikuMikuWorld
 				                                 edit.hiSpeedHideNotes };
 			context.pushHistory("Insert hi-speed changes", prev, context.score);
 		}
+		else if (currentMode == TimelineMode::InsertSkill)
+		{
+			for (const auto& [_, skill] : context.score.skills)
+				if (skill.tick == hoverTick)
+					return;
+
+			Score prev = context.score;
+			const id_t id = getNextSkillID();
+			context.score.skills.emplace(
+			    id, SkillTrigger{ id, hoverTick, SkillEffect::Score, static_cast<uint8_t>(1) });
+			context.pushHistory("Insert skill", prev, context.score);
+		}
 	}
 
 	void ScoreEditorTimeline::previewInput(const ScoreContext& context, EditArgs& edit,
@@ -1685,6 +1718,10 @@ namespace MikuMikuWorld
 			               edit.hiSpeedHideNotes);
 			break;
 
+		case TimelineMode::InsertSkill:
+			skillControl(context, hoverTick, SkillEffect::Score, 1, false);
+			break;
+
 		case TimelineMode::InsertDamage:
 			drawCcNote(inputNotes.damage, renderer, hoverTint);
 			break;
@@ -1693,6 +1730,66 @@ namespace MikuMikuWorld
 			drawNote(inputNotes.tap, renderer, hoverTint);
 			break;
 		}
+	}
+
+	void ScoreEditorTimeline::previewFeverInput(const ScoreContext& context)
+	{
+		int startTick = insertingFever ? feverDragStartTick : hoverTick;
+		int endTick = insertingFever ? feverDragEndTick : hoverTick + getSnapStepTicks();
+		if (startTick < 0 || endTick < 0)
+			return;
+
+		feverRangeControl(context, std::min(startTick, endTick), std::max(startTick, endTick),
+		                  false);
+	}
+
+	void ScoreEditorTimeline::updateFeverInsertion(ScoreContext& context)
+	{
+		const bool inFeverLane = isMouseInFeverDisplayLane(context);
+		if (hoverTick >= 0 && (inFeverLane || insertingFever))
+			previewFeverInput(context);
+
+		if (!insertingFever)
+		{
+			if (inFeverLane && ImGui::IsMouseClicked(0) && hoverTick >= 0)
+			{
+				insertingFever = true;
+				feverDragStartTick = hoverTick;
+				feverDragEndTick = hoverTick;
+			}
+			return;
+		}
+
+		if (hoverTick >= 0 && ImGui::IsMouseDown(0))
+			feverDragEndTick = hoverTick;
+
+		if (ImGui::IsMouseReleased(0))
+			commitFeverInsertion(context);
+	}
+
+	void ScoreEditorTimeline::commitFeverInsertion(ScoreContext& context)
+	{
+		if (feverDragStartTick < 0 || feverDragEndTick < 0)
+		{
+			insertingFever = false;
+			feverDragStartTick = -1;
+			feverDragEndTick = -1;
+			return;
+		}
+
+		int startTick = std::min(feverDragStartTick, feverDragEndTick);
+		int endTick = std::max(feverDragStartTick, feverDragEndTick);
+		if (startTick == endTick)
+			endTick = startTick + getSnapStepTicks();
+
+		Score prev = context.score;
+		context.score.fever.startTick = startTick;
+		context.score.fever.endTick = endTick;
+		context.pushHistory("Set FEVER event", prev, context.score);
+
+		insertingFever = false;
+		feverDragStartTick = -1;
+		feverDragEndTick = -1;
 	}
 
 	void ScoreEditorTimeline::executeInput(ScoreContext& context, EditArgs& edit)
@@ -1724,6 +1821,7 @@ namespace MikuMikuWorld
 		case TimelineMode::InsertBPM:
 		case TimelineMode::InsertTimeSign:
 		case TimelineMode::InsertHiSpeed:
+		case TimelineMode::InsertSkill:
 			insertEvent(context, edit);
 			break;
 
@@ -1765,6 +1863,9 @@ namespace MikuMikuWorld
 		}
 
 		currentMode = mode;
+		insertingFever = false;
+		feverDragStartTick = -1;
+		feverDragEndTick = -1;
 	}
 
 	int ScoreEditorTimeline::findClosestHold(ScoreContext& context, int lane, int tick)
@@ -2900,36 +3001,40 @@ namespace MikuMikuWorld
 
 	bool ScoreEditorTimeline::skillControl(const ScoreContext& context, const SkillTrigger& skill)
 	{
-		const int effectIndex = static_cast<int>(skill.effect);
-		const char* effectName = isArrayIndexInBounds(effectIndex, skillEffectTypes)
-		                             ? getString(skillEffectTypes[effectIndex])
-		                             : getString("skill");
+		return skillControl(context, skill.tick, skill.effect, skill.level, !playing);
+	}
+
+	bool ScoreEditorTimeline::skillControl(const ScoreContext& context, int tick, SkillEffect effect,
+	                                       int level, bool enabled)
+	{
 		float dpiScale = ImGui::GetMainViewport()->DpiScale;
 		Vector2 pos{ getTimelineStartX(context) - (85 * dpiScale),
-			         position.y - tickToPosition(skill.tick) + visualOffset };
-		return eventControl(getTimelineStartX(context), pos, skillColor,
-		                    IO::formatString("%s Lv.%d", effectName, skill.level).c_str(),
-		                    !playing);
+			         position.y - tickToPosition(tick) + visualOffset };
+		return eventControl(getTimelineStartX(context), pos, skillBadgeColor(effect),
+		                    IO::formatString("%s Lv.%d", skillBadgeIcon(effect), level).c_str(),
+		                    enabled);
 	}
 
 	bool ScoreEditorTimeline::skillControl(const ScoreContext& context, int tick, bool enabled)
 	{
-		float dpiScale = ImGui::GetMainViewport()->DpiScale;
-		Vector2 pos{ getTimelineStartX(context) - (50 * dpiScale),
-			         position.y - tickToPosition(tick) + visualOffset };
-		return eventControl(getTimelineStartX(context), pos, skillColor, getString("skill"),
-		                    enabled);
+		return skillControl(context, tick, SkillEffect::Score, 1, enabled);
 	}
 
 	bool ScoreEditorTimeline::feverControl(const ScoreContext& context, const Fever& fever)
 	{
+		return feverRangeControl(context, fever.startTick, fever.endTick, !playing);
+	}
+
+	bool ScoreEditorTimeline::feverRangeControl(const ScoreContext& context, int startTick,
+	                                            int endTick, bool enabled)
+	{
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
-		if (drawList && fever.startTick >= 0 && fever.endTick >= 0)
+		if (drawList && startTick >= 0 && endTick >= 0)
 		{
 			const ImRect rect = getFeverDisplayRect(context);
 			const float x = floorf((rect.Min.x + rect.Max.x) * 0.5f);
-			float y1 = position.y - tickToPosition(fever.startTick) + visualOffset;
-			float y2 = position.y - tickToPosition(fever.endTick) + visualOffset;
+			float y1 = position.y - tickToPosition(startTick) + visualOffset;
+			float y2 = position.y - tickToPosition(endTick) + visualOffset;
 			if (y1 > y2)
 				std::swap(y1, y2);
 
@@ -2938,8 +3043,8 @@ namespace MikuMikuWorld
 			drawList->AddLine({ x, y1 }, { x, y2 }, feverColor, 2.0f);
 		}
 
-		return feverControl(context, fever.startTick, true, !playing) ||
-		       feverControl(context, fever.endTick, false, !playing);
+		return feverControl(context, startTick, true, enabled) ||
+		       feverControl(context, endTick, false, enabled);
 	}
 
 	bool ScoreEditorTimeline::feverControl(const ScoreContext& context, int tick, bool start, bool enabled)

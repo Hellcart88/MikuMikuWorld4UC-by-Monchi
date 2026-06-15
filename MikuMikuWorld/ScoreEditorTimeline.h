@@ -114,6 +114,9 @@ namespace MikuMikuWorld
 		bool skipUpdateAfterSortingSteps{ false };
 		bool dragging{ false };
 		bool insertingHold{ false };
+		bool insertingFever{ false };
+		int feverDragStartTick{ -1 };
+		int feverDragEndTick{ -1 };
 
 		float time{};
 		float timeLastFrame{};
@@ -174,6 +177,8 @@ namespace MikuMikuWorld
 		void updateScrollingPosition();
 		ImRect getFeverDisplayRect(const ScoreContext& context) const;
 		ImRect getHiSpeedDisplayRect(const ScoreContext& context) const;
+		bool isMouseInFeverDisplayLane(const ScoreContext& context) const;
+		int getSnapStepTicks() const;
 		void drawLeftMetaEventClusters(ScoreContext& context);
 
 		void drawWaveform(ScoreContext& context);
@@ -211,8 +216,12 @@ namespace MikuMikuWorld
 		bool timeSignatureControl(const ScoreContext& context, int numerator, int denominator,
 		                          int tick, bool enabled);
 		bool skillControl(const ScoreContext& context, const SkillTrigger& skill);
+		bool skillControl(const ScoreContext& context, int tick, SkillEffect effect, int level,
+		                  bool enabled);
 		bool skillControl(const ScoreContext& context, int tick, bool enabled);
 		bool feverControl(const ScoreContext& context, const Fever& fever);
+		bool feverRangeControl(const ScoreContext& context, int startTick, int endTick,
+		                       bool enabled);
 		bool feverControl(const ScoreContext& context, int tick, bool start, bool enabled);
 		bool hiSpeedControl(const ScoreContext& context, const HiSpeedChange& hiSpeed);
 		bool hiSpeedControl(const ScoreContext& context, int tick, float speed, int layer,
@@ -223,8 +232,11 @@ namespace MikuMikuWorld
 
 		void drawInputNote(Renderer* renderer);
 		void previewInput(const ScoreContext& context, EditArgs& edit, Renderer* renderer);
+		void previewFeverInput(const ScoreContext& context);
 		void previewPaste(ScoreContext& context, Renderer* renderer);
 		void executeInput(ScoreContext& context, EditArgs& edit);
+		void updateFeverInsertion(ScoreContext& context);
+		void commitFeverInsertion(ScoreContext& context);
 		void eventEditor(ScoreContext& context);
 
 		void insertNote(ScoreContext& context, EditArgs& edit);

@@ -2456,39 +2456,6 @@ namespace MikuMikuWorld
 			ImGui::PopStyleVar();
 			ImGui::Separator();
 
-			if (ImGui::Button(getString("insert_skill"), ImVec2(-1, waypointButtonHeight)))
-			{
-				Score prev = context.score;
-				id_t id = getNextSkillID();
-				context.score.skills.emplace(id, SkillTrigger{ id, context.currentTick, SkillEffect::Score, static_cast<uint8_t>(1) });
-				context.pushHistory("Insert skill", prev, context.score);
-			}
-
-			ImVec2 halfBtnSize = {
-				(ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2,
-				waypointButtonHeight
-			};
-			if (ImGui::Button(getString("set_fever_start"), halfBtnSize))
-			{
-				if (context.score.fever.startTick != context.currentTick)
-				{
-					Score prev = context.score;
-					context.score.fever.startTick = context.currentTick;
-					context.pushHistory("Set fever start", prev, context.score);
-				}
-			}
-			ImGui::SameLine();
-			if (ImGui::Button(getString("set_fever_end"), halfBtnSize))
-			{
-				if (context.score.fever.endTick != context.currentTick)
-				{
-					Score prev = context.score;
-					context.score.fever.endTick = context.currentTick;
-					context.pushHistory("Set fever end", prev, context.score);
-				}
-			}
-			ImGui::Separator();
-
 			float windowHeight = ImGui::GetContentRegionAvail().y - ImGui::GetStyle().WindowPadding.y;
 
 			if (ImGui::BeginChild("waypoints_child_window", ImVec2(-1, windowHeight), true))

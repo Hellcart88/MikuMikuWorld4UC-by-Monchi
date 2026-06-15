@@ -35,7 +35,8 @@ namespace MikuMikuWorld
 		&config.input.timelineFriction, &config.input.timelineGuide,
 		&config.input.timelineDamage,   &config.input.timelineDummy,
 		&config.input.timelineBpm,      &config.input.timelineTimeSignature,
-		&config.input.timelineHiSpeed,
+		&config.input.timelineHiSpeed,  nullptr,
+		nullptr,
 	};
 
 	constexpr const char* toolbarFlickNames[] = { "none", "default",   "left",      "right",
@@ -373,7 +374,7 @@ namespace MikuMikuWorld
 				context.lerpHiSpeeds(timeline.getDivision(), EaseType::Linear);
 
 			for (int i = 0; i < (int)TimelineMode::TimelineModeMax; ++i)
-				if (ImGui::IsAnyPressed(*timelineModeBindings[i]))
+				if (timelineModeBindings[i] && ImGui::IsAnyPressed(*timelineModeBindings[i]))
 					timeline.changeMode((TimelineMode)i, edit);
 		}
 
@@ -945,8 +946,10 @@ namespace MikuMikuWorld
 				    std::string(fadeTypes[(int)edit.fadeType]).substr(5).c_str());
 			}
 
+			const char* shortcut =
+			    timelineModeBindings[i] ? ToShortcutString(*timelineModeBindings[i]) : "";
 			if (UI::toolbarImageButton(img.c_str(), getString(timelineModes[i]),
-			                           ToShortcutString(*timelineModeBindings[i]), true,
+			                           shortcut, true,
 			                           (int)timeline.getMode() == i))
 				timeline.changeMode((TimelineMode)i, edit);
 		}
