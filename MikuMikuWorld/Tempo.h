@@ -20,6 +20,7 @@ namespace MikuMikuWorld
 	{
 		int tick;
 		float bpm;
+		id_t runtimeId = static_cast<id_t>(-1);
 
 		Tempo();
 		Tempo(int tick, float bpm);

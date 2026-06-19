@@ -13,6 +13,8 @@ namespace MikuMikuWorld
 {
 	id_t nextSkillID = 1;
 	id_t nextHiSpeedID = 1;
+	id_t nextTempoRuntimeID = 1;
+	id_t nextWaypointRuntimeID = 1;
 	id_t getNextSkillID()
 	{
 		uint8_t data[sizeof(id_t)];
@@ -26,6 +28,22 @@ namespace MikuMikuWorld
 		std::memcpy(data, &nextHiSpeedID, sizeof(id_t));
 		nextHiSpeedID = choc::hash::xxHash64::hash(&data, sizeof(id_t), HASH_SEED + 3);
 		return nextHiSpeedID;
+	}
+
+	id_t getNextTempoRuntimeID()
+	{
+		uint8_t data[sizeof(id_t)];
+		std::memcpy(data, &nextTempoRuntimeID, sizeof(id_t));
+		nextTempoRuntimeID = choc::hash::xxHash64::hash(&data, sizeof(id_t), HASH_SEED + 4);
+		return nextTempoRuntimeID;
+	}
+
+	id_t getNextWaypointRuntimeID()
+	{
+		uint8_t data[sizeof(id_t)];
+		std::memcpy(data, &nextWaypointRuntimeID, sizeof(id_t));
+		nextWaypointRuntimeID = choc::hash::xxHash64::hash(&data, sizeof(id_t), HASH_SEED + 5);
+		return nextWaypointRuntimeID;
 	}
 
 	Score::Score()

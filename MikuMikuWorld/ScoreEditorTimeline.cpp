@@ -97,7 +97,8 @@ namespace MikuMikuWorld
 			timelineInstance->scrollTimeline(context, tick);
 	}
 
-	bool eventControl(float xPos, Vector2 pos, ImU32 color, const char* txt, bool enabled)
+	bool eventControl(float xPos, Vector2 pos, ImU32 color, const char* txt, bool enabled,
+	                  bool selected = false, ImRect* outRect = nullptr)
 	{
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		if (!drawList)
@@ -112,14 +113,21 @@ namespace MikuMikuWorld
 		    txt, { pos.x, pos.y - ImGui::GetFrameHeightWithSpacing() }, { -1, -1 }, color, enabled);
 		ImGui::PopStyleVar();
 		ImGui::PopID();
+		ImRect rect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+		if (outRect != nullptr)
+			*outRect = rect;
 		drawList->AddLine({ xPos, pos.y }, { pos.x + ImGui::GetItemRectSize().x, pos.y }, color,
 		                  primaryLineThickness);
+		if (selected)
+			drawList->AddRect(rect.Min, rect.Max, 0xffffffff, 2.0f, ImDrawFlags_RoundCornersAll,
+			                  1.5f);
 
 		return activated;
 	}
 
 	bool metaClusterControl(const char* id, float lineStartX, Vector2 pos, float width, ImU32 color,
-	                        const char* txt, bool enabled)
+	                        const char* txt, bool enabled, bool selected = false,
+	                        ImRect* outRect = nullptr)
 	{
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		if (!drawList)
@@ -136,8 +144,14 @@ namespace MikuMikuWorld
 		    color, enabled);
 		ImGui::PopStyleVar();
 		ImGui::PopID();
+		ImRect rect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+		if (outRect != nullptr)
+			*outRect = rect;
 		drawList->AddLine({ lineStartX, pos.y }, { pos.x + ImGui::GetItemRectSize().x, pos.y },
 		                  color, primaryLineThickness);
+		if (selected)
+			drawList->AddRect(rect.Min, rect.Max, 0xffffffff, 2.0f, ImDrawFlags_RoundCornersAll,
+			                  1.5f);
 
 		return activated;
 	}
@@ -183,8 +197,274 @@ namespace MikuMikuWorld
 		return ImRect({ x, position.y }, { x + width, position.y + size.y });
 	}
 
+	void ScoreEditorTimeline::openMetaEventEditor(ScoreContext& context,
+	                                              const SelectedMetaEvent& event)
+	{
+		switch (event.kind)
+		{
+		case MetaEventKind::Waypoint:
+			for (int index = 0; index < context.score.waypoints.size(); ++index)
+			{
+				const Waypoint& waypoint = context.score.waypoints[index];
+				if (waypoint.runtimeId != event.key)
+					continue;
+				eventEdit.editId = index;
+				eventEdit.editName = waypoint.name;
+				eventEdit.type = EventType::Waypoint;
+				ImGui::OpenPopup("edit_event");
+				return;
+			}
+			break;
+		case MetaEventKind::Bpm:
+			for (int index = 0; index < context.score.tempoChanges.size(); ++index)
+			{
+				const Tempo& tempo = context.score.tempoChanges[index];
+				if (tempo.runtimeId != event.key)
+					continue;
+				eventEdit.editId = index;
+				eventEdit.editBpm = tempo.bpm;
+				eventEdit.type = EventType::Bpm;
+				ImGui::OpenPopup("edit_event");
+				return;
+			}
+			break;
+		case MetaEventKind::TimeSignature:
+			if (context.score.timeSignatures.find((int)event.key) !=
+			    context.score.timeSignatures.end())
+			{
+				const TimeSignature& ts = context.score.timeSignatures[(int)event.key];
+				eventEdit.editId = event.key;
+				eventEdit.editTimeSignatureNumerator = ts.numerator;
+				eventEdit.editTimeSignatureDenominator = ts.denominator;
+				eventEdit.type = EventType::TimeSignature;
+				ImGui::OpenPopup("edit_event");
+				return;
+			}
+			break;
+		case MetaEventKind::Skill:
+			if (context.score.skills.find(event.key) != context.score.skills.end())
+			{
+				const SkillTrigger& skill = context.score.skills[event.key];
+				eventEdit.editId = event.key;
+				eventEdit.editSkillEffect = skill.effect;
+				eventEdit.editSkillLevel = skill.level;
+				eventEdit.type = EventType::Skill;
+				ImGui::OpenPopup("edit_event");
+				return;
+			}
+			break;
+		case MetaEventKind::FeverStart:
+		case MetaEventKind::FeverEnd:
+			eventEdit.editId = 0;
+			eventEdit.editFeverStartTick = context.score.fever.startTick;
+			eventEdit.editFeverEndTick = context.score.fever.endTick;
+			eventEdit.type = EventType::Fever;
+			ImGui::OpenPopup("edit_event");
+			return;
+		}
+	}
+
+	void ScoreEditorTimeline::updateMetaEventDrag(ScoreContext& context)
+	{
+		if (!isHoldingMetaEvent)
+			return;
+
+		if (ImGui::IsMouseDragging(0, 2.0f))
+			isMovingMetaEvent = true;
+
+		int appliedMeasureDelta = 0;
+		if (isMovingMetaEvent)
+		{
+			auto startTickForEvent = [this](const SelectedMetaEvent& event) -> int
+			{
+				switch (event.kind)
+				{
+				case MetaEventKind::Waypoint:
+					for (const Waypoint& waypoint : metaEventDragStartScore.waypoints)
+						if (waypoint.runtimeId == event.key)
+							return waypoint.tick;
+					break;
+				case MetaEventKind::Bpm:
+					for (const Tempo& tempo : metaEventDragStartScore.tempoChanges)
+						if (tempo.runtimeId == event.key)
+							return tempo.tick;
+					break;
+				case MetaEventKind::TimeSignature:
+					if (metaEventDragStartScore.timeSignatures.find((int)event.key) !=
+					    metaEventDragStartScore.timeSignatures.end())
+						return measureToTicks((int)event.key, TICKS_PER_BEAT,
+						                      metaEventDragStartScore.timeSignatures);
+					break;
+				case MetaEventKind::Skill:
+					if (metaEventDragStartScore.skills.find(event.key) !=
+					    metaEventDragStartScore.skills.end())
+						return metaEventDragStartScore.skills.at(event.key).tick;
+					break;
+				case MetaEventKind::FeverStart:
+					return metaEventDragStartScore.fever.startTick;
+				case MetaEventKind::FeverEnd:
+					return metaEventDragStartScore.fever.endTick;
+				}
+				return -1;
+			};
+
+			int tickDelta = std::max(0, hoverTick) - metaEventDragStartTick;
+			int measureDelta =
+			    accumulateMeasures(std::max(0, hoverTick), TICKS_PER_BEAT,
+			                       metaEventDragStartScore.timeSignatures) -
+			    metaEventDragStartMeasure;
+
+			for (const SelectedMetaEvent& event : metaEventDragSelection)
+			{
+				const int tick = startTickForEvent(event);
+				if (tick >= 0 && tick + tickDelta < 0)
+					tickDelta = -tick;
+				if ((event.kind == MetaEventKind::Bpm && tick == 0) ||
+				    (event.kind == MetaEventKind::TimeSignature && event.key == 0))
+				{
+					tickDelta = 0;
+					measureDelta = 0;
+				}
+			}
+
+			bool canMove = true;
+			for (const SelectedMetaEvent& event : metaEventDragSelection)
+			{
+				if (event.kind == MetaEventKind::Bpm)
+				{
+					const Tempo* movingTempo = nullptr;
+					for (const Tempo& tempo : metaEventDragStartScore.tempoChanges)
+						if (tempo.runtimeId == event.key)
+							movingTempo = &tempo;
+					if (movingTempo == nullptr)
+						continue;
+					const int targetTick = movingTempo->tick + tickDelta;
+					for (const Tempo& other : metaEventDragStartScore.tempoChanges)
+					{
+						if (other.runtimeId != event.key && other.tick == targetTick)
+						{
+							canMove = false;
+							break;
+						}
+					}
+				}
+				else if (event.kind == MetaEventKind::TimeSignature)
+				{
+					const int targetMeasure = (int)event.key + measureDelta;
+					if (targetMeasure < 0)
+						canMove = false;
+					for (const auto& [measure, _] : metaEventDragStartScore.timeSignatures)
+					{
+						if (measure != (int)event.key && measure == targetMeasure)
+						{
+							canMove = false;
+							break;
+						}
+					}
+				}
+				if (!canMove)
+					break;
+			}
+			if (!canMove)
+			{
+				tickDelta = 0;
+				measureDelta = 0;
+			}
+			appliedMeasureDelta = measureDelta;
+
+			context.score = metaEventDragStartScore;
+			const bool moveFeverRange =
+			    metaEventDragSelection.find({ MetaEventKind::FeverStart, 0 }) !=
+			        metaEventDragSelection.end() &&
+			    metaEventDragSelection.find({ MetaEventKind::FeverEnd, 0 }) !=
+			        metaEventDragSelection.end();
+			if (moveFeverRange)
+			{
+				context.score.fever.startTick = metaEventDragStartScore.fever.startTick + tickDelta;
+				context.score.fever.endTick = metaEventDragStartScore.fever.endTick + tickDelta;
+			}
+
+			for (const SelectedMetaEvent& event : metaEventDragSelection)
+			{
+				switch (event.kind)
+				{
+				case MetaEventKind::Waypoint:
+					for (Waypoint& waypoint : context.score.waypoints)
+						if (waypoint.runtimeId == event.key)
+							waypoint.tick += tickDelta;
+					break;
+				case MetaEventKind::Bpm:
+					for (Tempo& tempo : context.score.tempoChanges)
+						if (tempo.runtimeId == event.key)
+							tempo.tick += tickDelta;
+					break;
+				case MetaEventKind::TimeSignature:
+				{
+					const int sourceMeasure = (int)event.key;
+					const int targetMeasure = sourceMeasure + measureDelta;
+					if (sourceMeasure != targetMeasure &&
+					    context.score.timeSignatures.find(sourceMeasure) !=
+					        context.score.timeSignatures.end())
+					{
+						TimeSignature timeSignature =
+						    context.score.timeSignatures[sourceMeasure];
+						context.score.timeSignatures.erase(sourceMeasure);
+						timeSignature.measure = targetMeasure;
+						context.score.timeSignatures[targetMeasure] = timeSignature;
+					}
+					break;
+				}
+				case MetaEventKind::Skill:
+					if (context.score.skills.find(event.key) != context.score.skills.end())
+						context.score.skills[event.key].tick += tickDelta;
+					break;
+				case MetaEventKind::FeverStart:
+					if (moveFeverRange)
+						break;
+					context.score.fever.startTick =
+					    std::min(context.score.fever.startTick + tickDelta,
+					             context.score.fever.endTick);
+					break;
+				case MetaEventKind::FeverEnd:
+					if (moveFeverRange)
+						break;
+					context.score.fever.endTick =
+					    std::max(context.score.fever.endTick + tickDelta,
+					             context.score.fever.startTick);
+					break;
+				}
+			}
+		}
+
+		if (ImGui::IsMouseReleased(0))
+		{
+			if (isMovingMetaEvent)
+			{
+				if (context.selectedMetaEvents == metaEventDragSelection)
+				{
+					context.selectedMetaEvents.clear();
+					for (const SelectedMetaEvent& event : metaEventDragSelection)
+					{
+						if (event.kind == MetaEventKind::TimeSignature)
+							context.selectedMetaEvents.insert(
+							    { event.kind,
+							      static_cast<id_t>((int)event.key + appliedMeasureDelta) });
+						else
+							context.selectedMetaEvents.insert(event);
+					}
+				}
+				context.pushHistory("Move meta events", metaEventDragStartScore, context.score);
+			}
+			isHoldingMetaEvent = false;
+			isMovingMetaEvent = false;
+			metaEventDragSelection.clear();
+		}
+	}
+
 	void ScoreEditorTimeline::drawLeftMetaEventClusters(ScoreContext& context)
 	{
+		context.assignMissingMetaEventRuntimeIds();
+		metaEventRects.clear();
 		const float dpiScale = ImGui::GetMainViewport()->DpiScale;
 		const float timelineStartX = getTimelineStartX(context);
 		const float clusterRight = timelineStartX - (6.0f * dpiScale);
@@ -212,6 +492,7 @@ namespace MikuMikuWorld
 			ImU32 color{};
 			std::string id;
 			std::string text;
+			SelectedMetaEvent selectionKey{};
 
 			int waypointIndex = -1;
 			int bpmIndex = -1;
@@ -221,7 +502,7 @@ namespace MikuMikuWorld
 
 		struct Cluster
 		{
-			float y{};
+			float anchorY{};
 			std::vector<ClusterItem> items;
 		};
 
@@ -245,6 +526,7 @@ namespace MikuMikuWorld
 			item.color = waypointColor;
 			item.id = IO::formatString("meta_waypoint_%d_%s", waypoint.tick, waypoint.name.c_str());
 			item.text = waypoint.name;
+			item.selectionKey = { MetaEventKind::Waypoint, waypoint.runtimeId };
 			item.preferredWidth = std::min(ImGui::CalcTextSize(item.text.c_str()).x +
 			                                   (14.0f * dpiScale),
 			                               180.0f * dpiScale);
@@ -264,6 +546,7 @@ namespace MikuMikuWorld
 			item.color = tempoColor;
 			item.id = IO::formatString("meta_bpm_%d_%g", tempo.tick, tempo.bpm);
 			item.text = IO::formatString("%g BPM", tempo.bpm);
+			item.selectionKey = { MetaEventKind::Bpm, tempo.runtimeId };
 			item.preferredWidth = 68.0f * dpiScale;
 			item.minWidth = 54.0f * dpiScale;
 			item.bpmIndex = index;
@@ -283,6 +566,7 @@ namespace MikuMikuWorld
 			item.id = IO::formatString("meta_time_signature_%d_%d_%d", tick, ts.numerator,
 			                           ts.denominator);
 			item.text = IO::formatString("%d/%d", ts.numerator, ts.denominator);
+			item.selectionKey = { MetaEventKind::TimeSignature, static_cast<id_t>(measure) };
 			item.preferredWidth = 42.0f * dpiScale;
 			item.minWidth = 36.0f * dpiScale;
 			item.timeSignatureMeasure = measure;
@@ -299,6 +583,7 @@ namespace MikuMikuWorld
 			item.color = skillBadgeColor(skill.effect);
 			item.id = IO::formatString("meta_skill_%d_%d", id, skill.tick);
 			item.text = IO::formatString("%s Lv.%d", skillBadgeIcon(skill.effect), skill.level);
+			item.selectionKey = { MetaEventKind::Skill, id };
 			item.preferredWidth = 72.0f * dpiScale;
 			item.minWidth = 58.0f * dpiScale;
 			item.skillId = id;
@@ -314,15 +599,14 @@ namespace MikuMikuWorld
 		std::vector<Cluster> clusters;
 		for (const ClusterItem& item : items)
 		{
-			if (clusters.empty() || std::abs(item.y - clusters.back().y) > clusterThreshold)
+			if (clusters.empty() ||
+			    std::abs(item.y - clusters.back().anchorY) > clusterThreshold)
 			{
 				clusters.push_back({ item.y, { item } });
 				continue;
 			}
 
 			Cluster& cluster = clusters.back();
-			const float count = static_cast<float>(cluster.items.size());
-			cluster.y = ((cluster.y * count) + item.y) / (count + 1.0f);
 			cluster.items.push_back(item);
 		}
 
@@ -374,48 +658,39 @@ namespace MikuMikuWorld
 			{
 				const ClusterItem& item = cluster.items[i];
 				const bool enabled = item.type == ClusterItemType::Waypoint || !playing;
-				if (metaClusterControl(item.id.c_str(), timelineStartX, { x, item.y },
-				                       widths[i], item.color, item.text.c_str(), enabled))
+				ImRect itemRect;
+				metaClusterControl(item.id.c_str(), timelineStartX, { x, item.y },
+				                   widths[i], item.color, item.text.c_str(), enabled,
+				                   context.isMetaEventSelected(item.selectionKey), &itemRect);
+				metaEventRects[item.selectionKey] = itemRect;
+				if (ImGui::IsItemHovered())
+					isHoveringNote = true;
+				if (enabled && ImGui::IsItemActivated())
 				{
-					if (item.type == ClusterItemType::Waypoint &&
-					    isArrayIndexInBounds(item.waypointIndex, context.score.waypoints))
+					if (ImGui::GetIO().KeyAlt)
+						context.selectedMetaEvents.erase(item.selectionKey);
+					else if (ImGui::GetIO().KeyCtrl)
+						context.toggleMetaEventSelection(item.selectionKey);
+					else
+						context.selectMetaEvent(item.selectionKey, false);
+
+					if (context.isMetaEventSelected(item.selectionKey))
 					{
-						const Waypoint& waypoint = context.score.waypoints[item.waypointIndex];
-						eventEdit.editId = item.waypointIndex;
-						eventEdit.editName = waypoint.name;
-						eventEdit.type = EventType::Waypoint;
-						ImGui::OpenPopup("edit_event");
+						isHoldingMetaEvent = true;
+						holdingMetaEvent = item.selectionKey;
+						metaEventDragSelection = context.selectedMetaEvents;
+						metaEventDragStartScore = context.score;
+						metaEventDragStartTick = item.tick;
+						metaEventDragStartMeasure =
+						    accumulateMeasures(std::max(0, item.tick), TICKS_PER_BEAT,
+						                       context.score.timeSignatures);
 					}
-					else if (item.type == ClusterItemType::Bpm &&
-					         isArrayIndexInBounds(item.bpmIndex, context.score.tempoChanges))
-					{
-						eventEdit.editId = item.bpmIndex;
-						eventEdit.editBpm = context.score.tempoChanges[item.bpmIndex].bpm;
-						eventEdit.type = EventType::Bpm;
-						ImGui::OpenPopup("edit_event");
-					}
-					else if (item.type == ClusterItemType::TimeSignature &&
-					         context.score.timeSignatures.find(item.timeSignatureMeasure) !=
-					             context.score.timeSignatures.end())
-					{
-						const TimeSignature& ts =
-						    context.score.timeSignatures[item.timeSignatureMeasure];
-						eventEdit.editId = item.timeSignatureMeasure;
-						eventEdit.editTimeSignatureNumerator = ts.numerator;
-						eventEdit.editTimeSignatureDenominator = ts.denominator;
-						eventEdit.type = EventType::TimeSignature;
-						ImGui::OpenPopup("edit_event");
-					}
-					else if (item.type == ClusterItemType::Skill &&
-					         context.score.skills.find(item.skillId) != context.score.skills.end())
-					{
-						const SkillTrigger& skill = context.score.skills[item.skillId];
-						eventEdit.editId = item.skillId;
-						eventEdit.editSkillEffect = skill.effect;
-						eventEdit.editSkillLevel = skill.level;
-						eventEdit.type = EventType::Skill;
-						ImGui::OpenPopup("edit_event");
-					}
+				}
+				if (enabled && ImGui::IsItemClicked(ImGuiMouseButton_Right))
+				{
+					if (!context.isMetaEventSelected(item.selectionKey))
+						context.selectMetaEvent(item.selectionKey, false);
+					openMetaEventEditor(context, item.selectionKey);
 				}
 
 				x += widths[i] + gap;
@@ -833,7 +1108,7 @@ namespace MikuMikuWorld
 				          (io.KeyShift ? config.scrollSpeedShift : config.scrollSpeedNormal);
 			}
 
-			if (!isHoveringNote && !isHoldingNote && !insertingHold && !pasting &&
+			if (!isHoveringNote && !isHoldingNote && !isHoldingMetaEvent && !insertingHold && !pasting &&
 			    currentMode == TimelineMode::Select)
 			{
 				// Clicked inside timeline, the current mouse position is the first drag point
@@ -845,6 +1120,7 @@ namespace MikuMikuWorld
 					{
 						context.selectedNotes.clear();
 						context.selectedHiSpeedChanges.clear();
+						context.selectedMetaEvents.clear();
 					}
 				}
 
@@ -872,6 +1148,7 @@ namespace MikuMikuWorld
 			{
 				context.selectedNotes.clear();
 				context.selectedHiSpeedChanges.clear();
+				context.selectedMetaEvents.clear();
 			}
 
 			float yThreshold = (notesHeight * 0.5f) + 2.0f;
@@ -921,6 +1198,20 @@ namespace MikuMikuWorld
 					else
 						context.selectedHiSpeedChanges.insert(id);
 				}
+			}
+			ImRect selectionRect({ position.x + left, position.y + top + visualOffset },
+			                     { position.x + right, position.y + bottom + visualOffset });
+			for (const auto& [event, rect] : metaEventRects)
+			{
+				if (rect.Max.x < selectionRect.Min.x || rect.Min.x > selectionRect.Max.x ||
+				    rect.Max.y < selectionRect.Min.y || rect.Min.y > selectionRect.Max.y)
+				{
+					continue;
+				}
+				if (io.KeyAlt)
+					context.selectedMetaEvents.erase(event);
+				else
+					context.selectedMetaEvents.insert(event);
 			}
 
 			dragging = false;
@@ -1107,6 +1398,7 @@ namespace MikuMikuWorld
 		}
 
 		drawLeftMetaEventClusters(context);
+		updateMetaEventDrag(context);
 
 		// Update song boundaries
 		if (context.audio.isMusicInitialized())
@@ -1972,6 +2264,7 @@ namespace MikuMikuWorld
 					{
 						context.selectedNotes.clear();
 						context.selectedHiSpeedChanges.clear();
+						context.selectedMetaEvents.clear();
 					}
 
 					context.selectedNotes.insert(note.ID);
@@ -2921,7 +3214,7 @@ namespace MikuMikuWorld
 		                    enabled);
 	}
 
-	bool ScoreEditorTimeline::feverControl(const ScoreContext& context, const Fever& fever)
+	bool ScoreEditorTimeline::feverControl(ScoreContext& context, const Fever& fever)
 	{
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		if (drawList && fever.startTick >= 0 && fever.endTick >= 0)
@@ -2942,7 +3235,7 @@ namespace MikuMikuWorld
 		       feverControl(context, fever.endTick, false, !playing);
 	}
 
-	bool ScoreEditorTimeline::feverControl(const ScoreContext& context, int tick, bool start, bool enabled)
+	bool ScoreEditorTimeline::feverControl(ScoreContext& context, int tick, bool start, bool enabled)
 	{
 		if (tick < 0)
 			return false;
@@ -2954,7 +3247,41 @@ namespace MikuMikuWorld
 		const ImRect rect = getFeverDisplayRect(context);
 		Vector2 pos{ rect.Min.x + (2.0f * dpiScale),
 			         position.y - tickToPosition(tick) + visualOffset };
-		return eventControl(getTimelineEndX(context), pos, feverColor, txt.c_str(), enabled);
+		SelectedMetaEvent event{ start ? MetaEventKind::FeverStart : MetaEventKind::FeverEnd, 0 };
+		ImRect itemRect;
+		eventControl(getTimelineEndX(context), pos, feverColor, txt.c_str(), enabled,
+		             context.isMetaEventSelected(event), &itemRect);
+		metaEventRects[event] = itemRect;
+		if (ImGui::IsItemHovered())
+			isHoveringNote = true;
+		if (enabled && ImGui::IsItemActivated())
+		{
+			if (ImGui::GetIO().KeyAlt)
+				context.selectedMetaEvents.erase(event);
+			else if (ImGui::GetIO().KeyCtrl)
+				context.toggleMetaEventSelection(event);
+			else
+				context.selectMetaEvent(event, false);
+
+			if (context.isMetaEventSelected(event))
+			{
+				isHoldingMetaEvent = true;
+				holdingMetaEvent = event;
+				metaEventDragSelection = context.selectedMetaEvents;
+				metaEventDragStartScore = context.score;
+				metaEventDragStartTick = tick;
+				metaEventDragStartMeasure =
+				    accumulateMeasures(std::max(0, tick), TICKS_PER_BEAT,
+				                       context.score.timeSignatures);
+			}
+		}
+		if (enabled && ImGui::IsItemClicked(ImGuiMouseButton_Right))
+		{
+			if (!context.isMetaEventSelected(event))
+				context.selectMetaEvent(event, false);
+			return true;
+		}
+		return false;
 	}
 
 	bool ScoreEditorTimeline::hiSpeedControl(const ScoreContext& context, const HiSpeedChange& hiSpeed)
@@ -3972,7 +4299,9 @@ namespace MikuMikuWorld
 						}
 					} else {
 						if (!isSelected) {
+							context.selectedNotes.clear();
 							context.selectedHiSpeedChanges.clear();
+							context.selectedMetaEvents.clear();
 							context.selectedHiSpeedChanges.insert(current.ID);
 						}
 					}

@@ -7,6 +7,8 @@
 #include "Rendering/Renderer.h"
 #include "ScoreContext.h"
 #include "TimelineMode.h"
+#include <map>
+#include <set>
 
 namespace MikuMikuWorld
 {
@@ -134,6 +136,14 @@ namespace MikuMikuWorld
 		ImVec2 ctrlMousePos;
 		ImVec2 dragStart;
 		ImVec2 mousePos;
+		std::map<SelectedMetaEvent, ImRect> metaEventRects;
+		bool isHoldingMetaEvent{ false };
+		bool isMovingMetaEvent{ false };
+		SelectedMetaEvent holdingMetaEvent{};
+		std::set<SelectedMetaEvent> metaEventDragSelection;
+		Score metaEventDragStartScore;
+		int metaEventDragStartTick{};
+		int metaEventDragStartMeasure{};
 
 		Score prevUpdateScore;
 
@@ -175,6 +185,8 @@ namespace MikuMikuWorld
 		ImRect getFeverDisplayRect(const ScoreContext& context) const;
 		ImRect getHiSpeedDisplayRect(const ScoreContext& context) const;
 		void drawLeftMetaEventClusters(ScoreContext& context);
+		void openMetaEventEditor(ScoreContext& context, const SelectedMetaEvent& event);
+		void updateMetaEventDrag(ScoreContext& context);
 
 		void drawWaveform(ScoreContext& context);
 		void drawHiSpeedGraph(ScoreContext& context);
@@ -212,8 +224,8 @@ namespace MikuMikuWorld
 		                          int tick, bool enabled);
 		bool skillControl(const ScoreContext& context, const SkillTrigger& skill);
 		bool skillControl(const ScoreContext& context, int tick, bool enabled);
-		bool feverControl(const ScoreContext& context, const Fever& fever);
-		bool feverControl(const ScoreContext& context, int tick, bool start, bool enabled);
+		bool feverControl(ScoreContext& context, const Fever& fever);
+		bool feverControl(ScoreContext& context, int tick, bool start, bool enabled);
 		bool hiSpeedControl(const ScoreContext& context, const HiSpeedChange& hiSpeed);
 		bool hiSpeedControl(const ScoreContext& context, int tick, float speed, int layer,
 		                    float skip, HiSpeedEaseType ease, bool hideNotes,

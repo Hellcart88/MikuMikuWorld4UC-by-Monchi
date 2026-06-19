@@ -9,6 +9,7 @@
 #include "ScoreStats.h"
 #include "TimelineMode.h"
 #include "PreviewData.h" // <--- これを追加
+#include <set>
 #include <unordered_set>
 
 namespace MikuMikuWorld
@@ -69,12 +70,46 @@ namespace MikuMikuWorld
 		std::unordered_map<id_t, HoldNote> holds;
 		std::unordered_map<id_t, Note> damages;
 		std::unordered_map<id_t, HiSpeedChange> hiSpeedChanges;
+		std::vector<Waypoint> waypoints;
+		std::vector<Tempo> tempoChanges;
+		std::vector<TimeSignature> timeSignatures;
+		std::vector<SkillTrigger> skills;
+		bool hasFever{ false };
+		Fever fever{ -1, -1 };
 		bool pasting{ false };
 		int offsetTicks{};
 		int offsetLane{};
 		int midLane{};
 		int minLaneOffset{};
 		int maxLaneOffset{};
+	};
+
+	enum class MetaEventKind : uint8_t
+	{
+		Waypoint,
+		Bpm,
+		TimeSignature,
+		Skill,
+		FeverStart,
+		FeverEnd
+	};
+
+	struct SelectedMetaEvent
+	{
+		MetaEventKind kind = MetaEventKind::Waypoint;
+		id_t key = static_cast<id_t>(-1);
+
+		bool operator<(const SelectedMetaEvent& other) const
+		{
+			if (kind != other.kind)
+				return static_cast<uint8_t>(kind) < static_cast<uint8_t>(other.kind);
+			return key < other.key;
+		}
+
+		bool operator==(const SelectedMetaEvent& other) const
+		{
+			return kind == other.kind && key == other.key;
+		}
 	};
 
 	class ScoreContext
@@ -90,6 +125,7 @@ namespace MikuMikuWorld
 		
 		std::unordered_set<id_t> selectedNotes;
 		std::unordered_set<id_t> selectedHiSpeedChanges;
+		std::set<SelectedMetaEvent> selectedMetaEvents;
 
 		Audio::WaveformMipChain waveformL, waveformR;
 
@@ -101,7 +137,8 @@ namespace MikuMikuWorld
 
 		bool hasSelection() const
 		{
-			return selectedNotes.size() > 0 || selectedHiSpeedChanges.size() > 0;
+			return selectedNotes.size() > 0 || selectedHiSpeedChanges.size() > 0 ||
+			       selectedMetaEvents.size() > 0;
 		}
 
 		bool hasHoldInSelection() const
@@ -153,7 +190,17 @@ namespace MikuMikuWorld
 			for (auto& it : score.notes)
 				selectedNotes.insert(it.first);
 		}
-		inline void clearSelection() { selectedNotes.clear(); }
+		inline void clearSelection()
+		{
+			selectedNotes.clear();
+			selectedHiSpeedChanges.clear();
+			selectedMetaEvents.clear();
+		}
+		bool isMetaEventSelected(const SelectedMetaEvent& event) const;
+		void selectMetaEvent(const SelectedMetaEvent& event, bool additive);
+		void toggleMetaEventSelection(const SelectedMetaEvent& event);
+		int getMetaEventTick(const SelectedMetaEvent& event) const;
+		void assignMissingMetaEventRuntimeIds();
 
 		void setStep(HoldStepType step);
 		void setFlick(FlickType flick);
