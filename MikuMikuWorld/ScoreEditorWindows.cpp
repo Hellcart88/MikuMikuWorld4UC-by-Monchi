@@ -7,6 +7,7 @@
 #include "ScoreContext.h"
 #include "UI.h"
 #include "Utilities.h"
+#include <climits>
 
 namespace MikuMikuWorld
 {
@@ -121,7 +122,8 @@ namespace MikuMikuWorld
 
 	void ScoreNotePropertiesWindow::update(ScoreContext& context, int currentDivision)
 	{
-		auto numSelected = context.selectedNotes.size() + context.selectedHiSpeedChanges.size();
+		auto numSelected = context.selectedNotes.size() + context.selectedHiSpeedChanges.size() +
+		                   context.selectedMetaEvents.size();
 		if (numSelected == 0)
 		{
 			ImGui::Text("%s", getString("note_properties_not_selected"));
@@ -130,6 +132,233 @@ namespace MikuMikuWorld
 
 		Score prev = context.score;
 		bool edited = false;
+
+		if (!context.selectedMetaEvents.empty() && context.selectedNotes.empty() &&
+		    context.selectedHiSpeedChanges.empty())
+		{
+			if (context.selectedMetaEvents.size() > 1)
+			{
+				ImGui::Text("%s", "Multiple meta events selected.");
+				return;
+			}
+
+			const SelectedMetaEvent selectedMeta = *context.selectedMetaEvents.begin();
+			int selectedTick = context.getMetaEventTick(selectedMeta);
+			if (selectedTick < 0)
+			{
+				ImGui::Text("%s", getString("note_properties_not_selected"));
+				return;
+			}
+
+			if (ImGui::CollapsingHeader(IO::concat(ICON_FA_COG, getString("general"), " ").c_str(),
+			                            ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				UI::beginPropertyColumns();
+				double beat = selectedTick / static_cast<float>(TICKS_PER_BEAT);
+				UI::propertyLabel(getString("beat"));
+				ImGui::SetNextItemWidth(-1);
+				double step = 4.0 / (currentDivision > 0 ? currentDivision : 4);
+				double step_fast = step * 4.0;
+				bool beatChanged =
+				    ImGui::InputDouble(IO::concat("##", getString("beat")).c_str(), &beat, step,
+				                       step_fast, "%.3f");
+				ImGui::NextColumn();
+
+				if (beatChanged)
+				{
+					int newTick = std::max(0, static_cast<int>(std::round(beat * TICKS_PER_BEAT)));
+					if (selectedMeta.kind == MetaEventKind::Waypoint)
+					{
+						for (Waypoint& waypoint : context.score.waypoints)
+							if (waypoint.runtimeId == selectedMeta.key)
+								waypoint.tick = newTick;
+						edited = true;
+					}
+					else if (selectedMeta.kind == MetaEventKind::Bpm)
+					{
+						bool duplicate = false;
+						for (const Tempo& tempo : context.score.tempoChanges)
+							if (tempo.runtimeId != selectedMeta.key && tempo.tick == newTick)
+								duplicate = true;
+						if (!duplicate)
+						{
+							for (Tempo& tempo : context.score.tempoChanges)
+								if (tempo.runtimeId == selectedMeta.key && tempo.tick != 0)
+									tempo.tick = newTick;
+							std::sort(context.score.tempoChanges.begin(),
+							          context.score.tempoChanges.end(),
+							          [](const Tempo& a, const Tempo& b)
+							          { return a.tick < b.tick; });
+							edited = true;
+						}
+					}
+					else if (selectedMeta.kind == MetaEventKind::Skill)
+					{
+						if (context.score.skills.find(selectedMeta.key) !=
+						    context.score.skills.end())
+						{
+							context.score.skills[selectedMeta.key].tick = newTick;
+							edited = true;
+						}
+					}
+					else if (selectedMeta.kind == MetaEventKind::FeverStart)
+					{
+						context.score.fever.startTick =
+						    std::min(newTick, context.score.fever.endTick);
+						edited = true;
+					}
+					else if (selectedMeta.kind == MetaEventKind::FeverEnd)
+					{
+						context.score.fever.endTick =
+						    std::max(newTick, context.score.fever.startTick);
+						edited = true;
+					}
+				}
+
+				if (config.showTickInProperties)
+				{
+					if (UI::addIntProperty(getString("tick"), selectedTick))
+					{
+						selectedTick = std::max(0, selectedTick);
+						if (selectedMeta.kind == MetaEventKind::Waypoint)
+						{
+							for (Waypoint& waypoint : context.score.waypoints)
+								if (waypoint.runtimeId == selectedMeta.key)
+									waypoint.tick = selectedTick;
+							edited = true;
+						}
+						else if (selectedMeta.kind == MetaEventKind::Bpm)
+						{
+							bool duplicate = false;
+							for (const Tempo& tempo : context.score.tempoChanges)
+								if (tempo.runtimeId != selectedMeta.key &&
+								    tempo.tick == selectedTick)
+									duplicate = true;
+							if (!duplicate)
+							{
+								for (Tempo& tempo : context.score.tempoChanges)
+									if (tempo.runtimeId == selectedMeta.key && tempo.tick != 0)
+										tempo.tick = selectedTick;
+								std::sort(context.score.tempoChanges.begin(),
+								          context.score.tempoChanges.end(),
+								          [](const Tempo& a, const Tempo& b)
+								          { return a.tick < b.tick; });
+								edited = true;
+							}
+						}
+						else if (selectedMeta.kind == MetaEventKind::Skill)
+						{
+							if (context.score.skills.find(selectedMeta.key) !=
+							    context.score.skills.end())
+							{
+								context.score.skills[selectedMeta.key].tick = selectedTick;
+								edited = true;
+							}
+						}
+					}
+				}
+				UI::endPropertyColumns();
+			}
+
+			if (ImGui::CollapsingHeader("Meta Event", ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				UI::beginPropertyColumns();
+				switch (selectedMeta.kind)
+				{
+				case MetaEventKind::Waypoint:
+					for (Waypoint& waypoint : context.score.waypoints)
+					{
+						if (waypoint.runtimeId != selectedMeta.key)
+							continue;
+						UI::addStringProperty(getString("waypoint_name"), waypoint.name);
+						if (ImGui::IsItemDeactivatedAfterEdit())
+							edited = true;
+					}
+					break;
+				case MetaEventKind::Bpm:
+					for (Tempo& tempo : context.score.tempoChanges)
+					{
+						if (tempo.runtimeId != selectedMeta.key)
+							continue;
+						if (UI::addFloatProperty(getString("bpm"), tempo.bpm, "%g"))
+						{
+							tempo.bpm = std::clamp(tempo.bpm, static_cast<float>(MIN_BPM),
+							                       static_cast<float>(MAX_BPM));
+							edited = true;
+						}
+					}
+					break;
+				case MetaEventKind::TimeSignature:
+					if (context.score.timeSignatures.find((int)selectedMeta.key) !=
+					    context.score.timeSignatures.end())
+					{
+						TimeSignature& ts = context.score.timeSignatures[(int)selectedMeta.key];
+						int measure = ts.measure;
+						if (UI::addIntProperty("Measure", measure, 0, INT_MAX))
+						{
+							if (measure != ts.measure &&
+							    context.score.timeSignatures.find(measure) ==
+							        context.score.timeSignatures.end())
+							{
+								TimeSignature moved = ts;
+								context.score.timeSignatures.erase(ts.measure);
+								moved.measure = measure;
+								context.score.timeSignatures[measure] = moved;
+								context.selectedMetaEvents.clear();
+								context.selectedMetaEvents.insert(
+								    { MetaEventKind::TimeSignature, static_cast<id_t>(measure) });
+								edited = true;
+							}
+						}
+						TimeSignature& updatedTs =
+						    context.score.timeSignatures[(int)context.selectedMetaEvents.begin()->key];
+						if (UI::timeSignatureSelect(updatedTs.numerator, updatedTs.denominator))
+						{
+							updatedTs.numerator =
+							    std::clamp(abs(updatedTs.numerator), MIN_TIME_SIGNATURE,
+							               MAX_TIME_SIGNATURE_NUMERATOR);
+							updatedTs.denominator =
+							    std::clamp(abs(updatedTs.denominator), MIN_TIME_SIGNATURE,
+							               MAX_TIME_SIGNATURE_DENOMINATOR);
+							edited = true;
+						}
+					}
+					break;
+				case MetaEventKind::Skill:
+					if (context.score.skills.find(selectedMeta.key) != context.score.skills.end())
+					{
+						SkillTrigger& skill = context.score.skills[selectedMeta.key];
+						int level = skill.level;
+						edited |= UI::addSelectProperty(getString("skill_effect"), skill.effect,
+						                                skillEffectTypes,
+						                                arrayLength(skillEffectTypes));
+						if (UI::addIntProperty(getString("skill_level"), level, "Lv.%d", 1, 4))
+						{
+							skill.level = static_cast<uint8_t>(std::clamp(level, 1, 4));
+							edited = true;
+						}
+					}
+					break;
+				case MetaEventKind::FeverStart:
+				case MetaEventKind::FeverEnd:
+					edited |= UI::addIntProperty(getString("fever_start_tick"),
+					                             context.score.fever.startTick, -1, INT_MAX);
+					edited |= UI::addIntProperty(getString("fever_end_tick"),
+					                             context.score.fever.endTick, -1, INT_MAX);
+					if (context.score.fever.startTick >= 0 && context.score.fever.endTick >= 0 &&
+					    context.score.fever.endTick < context.score.fever.startTick)
+					{
+						context.score.fever.endTick = context.score.fever.startTick;
+					}
+					break;
+				}
+				UI::endPropertyColumns();
+			}
+
+			if (edited)
+				context.pushHistory("Edited meta event", prev, context.score);
+			return;
+		}
 
 		int selectedTick;
 		int selectedLayer;

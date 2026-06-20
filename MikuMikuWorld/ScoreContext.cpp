@@ -4,6 +4,8 @@
 #include "UI.h"
 #include "Utilities.h"
 #include "Math.h"
+#include <algorithm>
+#include <climits>
 #include <stdio.h>
 #include <map>
 #include <unordered_map>
@@ -12,9 +14,116 @@
 using json = nlohmann::json;
 using namespace IO;
 
-namespace MikuMikuWorld
-{
+	namespace MikuMikuWorld
+	{
 	constexpr const char* clipboardSignature = "MikuMikuWorld clipboard\n";
+
+	namespace
+	{
+		const Tempo* findTempoByRuntimeId(const Score& score, id_t runtimeId)
+		{
+			auto it = std::find_if(score.tempoChanges.begin(), score.tempoChanges.end(),
+			                       [runtimeId](const Tempo& tempo)
+			                       { return tempo.runtimeId == runtimeId; });
+			return it == score.tempoChanges.end() ? nullptr : &(*it);
+		}
+
+		Tempo* findTempoByRuntimeId(Score& score, id_t runtimeId)
+		{
+			auto it = std::find_if(score.tempoChanges.begin(), score.tempoChanges.end(),
+			                       [runtimeId](const Tempo& tempo)
+			                       { return tempo.runtimeId == runtimeId; });
+			return it == score.tempoChanges.end() ? nullptr : &(*it);
+		}
+
+		const Waypoint* findWaypointByRuntimeId(const Score& score, id_t runtimeId)
+		{
+			auto it = std::find_if(score.waypoints.begin(), score.waypoints.end(),
+			                       [runtimeId](const Waypoint& waypoint)
+			                       { return waypoint.runtimeId == runtimeId; });
+			return it == score.waypoints.end() ? nullptr : &(*it);
+		}
+
+		Waypoint* findWaypointByRuntimeId(Score& score, id_t runtimeId)
+		{
+			auto it = std::find_if(score.waypoints.begin(), score.waypoints.end(),
+			                       [runtimeId](const Waypoint& waypoint)
+			                       { return waypoint.runtimeId == runtimeId; });
+			return it == score.waypoints.end() ? nullptr : &(*it);
+		}
+
+		int getFeverEndpointTick(const Fever& fever, MetaEventKind kind)
+		{
+			return kind == MetaEventKind::FeverStart ? fever.startTick : fever.endTick;
+		}
+
+		bool isFeverEndpoint(MetaEventKind kind)
+		{
+			return kind == MetaEventKind::FeverStart || kind == MetaEventKind::FeverEnd;
+		}
+	}
+
+	bool ScoreContext::isMetaEventSelected(const SelectedMetaEvent& event) const
+	{
+		return selectedMetaEvents.find(event) != selectedMetaEvents.end();
+	}
+
+	void ScoreContext::selectMetaEvent(const SelectedMetaEvent& event, bool additive)
+	{
+		if (!additive)
+			clearSelection();
+		selectedMetaEvents.insert(event);
+	}
+
+	void ScoreContext::toggleMetaEventSelection(const SelectedMetaEvent& event)
+	{
+		auto it = selectedMetaEvents.find(event);
+		if (it == selectedMetaEvents.end())
+			selectedMetaEvents.insert(event);
+		else
+			selectedMetaEvents.erase(it);
+	}
+
+	void ScoreContext::assignMissingMetaEventRuntimeIds()
+	{
+		for (Tempo& tempo : score.tempoChanges)
+		{
+			if (tempo.runtimeId == static_cast<id_t>(-1))
+				tempo.runtimeId = getNextTempoRuntimeID();
+		}
+		for (Waypoint& waypoint : score.waypoints)
+		{
+			if (waypoint.runtimeId == static_cast<id_t>(-1))
+				waypoint.runtimeId = getNextWaypointRuntimeID();
+		}
+	}
+
+	int ScoreContext::getMetaEventTick(const SelectedMetaEvent& event) const
+	{
+		switch (event.kind)
+		{
+		case MetaEventKind::Waypoint:
+			if (const Waypoint* waypoint = findWaypointByRuntimeId(score, event.key))
+				return waypoint->tick;
+			break;
+		case MetaEventKind::Bpm:
+			if (const Tempo* tempo = findTempoByRuntimeId(score, event.key))
+				return tempo->tick;
+			break;
+		case MetaEventKind::TimeSignature:
+			if (score.timeSignatures.find((int)event.key) != score.timeSignatures.end())
+				return measureToTicks((int)event.key, TICKS_PER_BEAT, score.timeSignatures);
+			break;
+		case MetaEventKind::Skill:
+			if (score.skills.find(event.key) != score.skills.end())
+				return score.skills.at(event.key).tick;
+			break;
+		case MetaEventKind::FeverStart:
+		case MetaEventKind::FeverEnd:
+			return getFeverEndpointTick(score.fever, event.kind);
+		}
+		return -1;
+	}
 
 	void ScoreContext::setStep(HoldStepType type)
 	{
@@ -395,7 +504,7 @@ namespace MikuMikuWorld
 
 	void ScoreContext::deleteSelection()
 	{
-		if (selectedNotes.empty() && selectedHiSpeedChanges.empty())
+		if (selectedNotes.empty() && selectedHiSpeedChanges.empty() && selectedMetaEvents.empty())
 			return;
 
 		Score prev = score;
@@ -442,9 +551,42 @@ namespace MikuMikuWorld
 				score.hiSpeedChanges.erase(it);
 			}
 		}
+		bool removeFever = false;
+		for (const SelectedMetaEvent& event : selectedMetaEvents)
+		{
+			switch (event.kind)
+			{
+			case MetaEventKind::Waypoint:
+				score.waypoints.erase(
+				    std::remove_if(score.waypoints.begin(), score.waypoints.end(),
+				                   [&event](const Waypoint& waypoint)
+				                   { return waypoint.runtimeId == event.key; }),
+				    score.waypoints.end());
+				break;
+			case MetaEventKind::Bpm:
+				score.tempoChanges.erase(
+				    std::remove_if(score.tempoChanges.begin(), score.tempoChanges.end(),
+				                   [&event](const Tempo& tempo)
+				                   { return tempo.runtimeId == event.key && tempo.tick != 0; }),
+				    score.tempoChanges.end());
+				break;
+			case MetaEventKind::TimeSignature:
+				if (event.key != 0)
+					score.timeSignatures.erase((int)event.key);
+				break;
+			case MetaEventKind::Skill:
+				score.skills.erase(event.key);
+				break;
+			case MetaEventKind::FeverStart:
+			case MetaEventKind::FeverEnd:
+				removeFever = true;
+				break;
+			}
+		}
+		if (removeFever)
+			score.fever.startTick = score.fever.endTick = -1;
 
-		selectedNotes.clear();
-		selectedHiSpeedChanges.clear();
+		clearSelection();
 		pushHistory("Delete notes", prev, score);
 	}
 
@@ -476,8 +618,10 @@ namespace MikuMikuWorld
 
 	void ScoreContext::copySelection()
 	{
-		if (selectedNotes.empty() && selectedHiSpeedChanges.empty())
+		if (selectedNotes.empty() && selectedHiSpeedChanges.empty() && selectedMetaEvents.empty())
 			return;
+
+		assignMissingMetaEventRuntimeIds();
 
 		int minTick = INT_MAX;
 		if (!selectedNotes.empty())
@@ -500,9 +644,90 @@ namespace MikuMikuWorld
 			                                       }))
 			                 .tick);
 		}
+		for (const SelectedMetaEvent& event : selectedMetaEvents)
+		{
+			int tick = getMetaEventTick(event);
+			if (tick >= 0)
+				minTick = std::min(minTick, tick);
+		}
+		if (minTick == INT_MAX)
+			return;
 
 		json data =
 		    jsonIO::noteSelectionToJson(score, selectedNotes, selectedHiSpeedChanges, minTick);
+		json waypoints = json::array();
+		json tempoChanges = json::array();
+		json timeSignatures = json::array();
+		json skills = json::array();
+		const int baseMeasure = accumulateMeasures(minTick, TICKS_PER_BEAT, score.timeSignatures);
+		bool copiedFever = false;
+
+		for (const SelectedMetaEvent& event : selectedMetaEvents)
+		{
+			switch (event.kind)
+			{
+			case MetaEventKind::Waypoint:
+				if (const Waypoint* waypoint = findWaypointByRuntimeId(score, event.key))
+				{
+					json waypointData;
+					waypointData["name"] = waypoint->name;
+					waypointData["tick"] = waypoint->tick - minTick;
+					waypoints.push_back(waypointData);
+				}
+				break;
+			case MetaEventKind::Bpm:
+				if (const Tempo* tempo = findTempoByRuntimeId(score, event.key))
+				{
+					json tempoData;
+					tempoData["tick"] = tempo->tick - minTick;
+					tempoData["bpm"] = tempo->bpm;
+					tempoChanges.push_back(tempoData);
+				}
+				break;
+			case MetaEventKind::TimeSignature:
+				if (score.timeSignatures.find((int)event.key) != score.timeSignatures.end())
+				{
+					const TimeSignature& timeSignature = score.timeSignatures.at((int)event.key);
+					json timeSignatureData;
+					timeSignatureData["measure"] = timeSignature.measure - baseMeasure;
+					timeSignatureData["numerator"] = timeSignature.numerator;
+					timeSignatureData["denominator"] = timeSignature.denominator;
+					timeSignatures.push_back(timeSignatureData);
+				}
+				break;
+			case MetaEventKind::Skill:
+				if (score.skills.find(event.key) != score.skills.end())
+				{
+					const SkillTrigger& skill = score.skills.at(event.key);
+					json skillData;
+					skillData["tick"] = skill.tick - minTick;
+					skillData["effect"] = static_cast<int>(skill.effect);
+					skillData["level"] = skill.level;
+					skills.push_back(skillData);
+				}
+				break;
+			case MetaEventKind::FeverStart:
+			case MetaEventKind::FeverEnd:
+				copiedFever = true;
+				break;
+			}
+		}
+
+		if (!waypoints.empty())
+			data["waypoints"] = waypoints;
+		if (!tempoChanges.empty())
+			data["tempoChanges"] = tempoChanges;
+		if (!timeSignatures.empty())
+			data["timeSignatures"] = timeSignatures;
+		if (!skills.empty())
+			data["skills"] = skills;
+		if (copiedFever && score.fever.startTick >= 0 && score.fever.endTick >= 0)
+		{
+			data["fever"] = {
+				{ "startTick", score.fever.startTick - minTick },
+				{ "endTick", score.fever.endTick - minTick }
+			};
+		}
 
 		std::string clipboard{ clipboardSignature };
 		clipboard.append(data.dump());
@@ -519,6 +744,12 @@ namespace MikuMikuWorld
 		pasteData.damages.clear();
 		pasteData.holds.clear();
 		pasteData.hiSpeedChanges.clear();
+		pasteData.waypoints.clear();
+		pasteData.tempoChanges.clear();
+		pasteData.timeSignatures.clear();
+		pasteData.skills.clear();
+		pasteData.hasFever = false;
+		pasteData.fever = { -1, -1 };
 
 		if (jsonIO::arrayHasData(data, "notes"))
 		{
@@ -684,6 +915,67 @@ namespace MikuMikuWorld
 			}
 		}
 
+		if (jsonIO::arrayHasData(data, "waypoints"))
+		{
+			for (const auto& entry : data["waypoints"])
+			{
+				Waypoint waypoint;
+				waypoint.name = jsonIO::tryGetValue<std::string>(entry, "name", "");
+				waypoint.tick = jsonIO::tryGetValue<int>(entry, "tick", 0);
+				pasteData.waypoints.push_back(waypoint);
+			}
+		}
+
+		if (jsonIO::arrayHasData(data, "tempoChanges"))
+		{
+			for (const auto& entry : data["tempoChanges"])
+			{
+				Tempo tempo;
+				tempo.tick = jsonIO::tryGetValue<int>(entry, "tick", 0);
+				tempo.bpm = std::clamp(jsonIO::tryGetValue<float>(entry, "bpm", 160.0f),
+				                       static_cast<float>(MIN_BPM), static_cast<float>(MAX_BPM));
+				pasteData.tempoChanges.push_back(tempo);
+			}
+		}
+
+		if (jsonIO::arrayHasData(data, "timeSignatures"))
+		{
+			for (const auto& entry : data["timeSignatures"])
+			{
+				TimeSignature timeSignature;
+				timeSignature.measure = jsonIO::tryGetValue<int>(entry, "measure", 0);
+				timeSignature.numerator =
+				    std::clamp(abs(jsonIO::tryGetValue<int>(entry, "numerator", 4)),
+				               MIN_TIME_SIGNATURE, MAX_TIME_SIGNATURE_NUMERATOR);
+				timeSignature.denominator =
+				    std::clamp(abs(jsonIO::tryGetValue<int>(entry, "denominator", 4)),
+				               MIN_TIME_SIGNATURE, MAX_TIME_SIGNATURE_DENOMINATOR);
+				pasteData.timeSignatures.push_back(timeSignature);
+			}
+		}
+
+		if (jsonIO::arrayHasData(data, "skills"))
+		{
+			for (const auto& entry : data["skills"])
+			{
+				SkillTrigger skill;
+				skill.ID = baseId++;
+				skill.tick = jsonIO::tryGetValue<int>(entry, "tick", 0);
+				const int effect = std::clamp(jsonIO::tryGetValue<int>(entry, "effect", 0), 0,
+				                              static_cast<int>(SkillEffect::EffectCount) - 1);
+				skill.effect = static_cast<SkillEffect>(effect);
+				skill.level = static_cast<uint8_t>(std::clamp(jsonIO::tryGetValue<int>(entry, "level", 1), 1, 4));
+				pasteData.skills.push_back(skill);
+			}
+		}
+
+		if (jsonIO::keyExists(data, "fever"))
+		{
+			pasteData.hasFever = true;
+			pasteData.fever.startTick = jsonIO::tryGetValue<int>(data["fever"], "startTick", -1);
+			pasteData.fever.endTick = jsonIO::tryGetValue<int>(data["fever"], "endTick", -1);
+		}
+
 		if (flip)
 		{
 			for (auto& [_, note] : pasteData.notes)
@@ -702,7 +994,10 @@ namespace MikuMikuWorld
 		}
 
 		pasteData.pasting = !(pasteData.notes.empty() && pasteData.damages.empty() &&
-		                      pasteData.holds.empty() && pasteData.hiSpeedChanges.empty());
+		                      pasteData.holds.empty() && pasteData.hiSpeedChanges.empty() &&
+		                      pasteData.waypoints.empty() && pasteData.tempoChanges.empty() &&
+		                      pasteData.timeSignatures.empty() && pasteData.skills.empty() &&
+		                      !pasteData.hasFever);
 		if (pasteData.pasting)
 		{
 			// find the lane in which the cursor is in the middle of pasted notes
@@ -782,9 +1077,81 @@ namespace MikuMikuWorld
 			score.hiSpeedChanges[hsc.ID] = hsc;
 		}
 
+		std::vector<SelectedMetaEvent> pastedMetaEvents;
+		for (Waypoint waypoint : pasteData.waypoints)
+		{
+			waypoint.tick += pasteData.offsetTicks;
+			if (waypoint.tick < 0)
+				continue;
+			waypoint.runtimeId = getNextWaypointRuntimeID();
+			score.waypoints.push_back(waypoint);
+			pastedMetaEvents.push_back({ MetaEventKind::Waypoint, waypoint.runtimeId });
+		}
+		std::sort(score.waypoints.begin(), score.waypoints.end(),
+		          [](const Waypoint& a, const Waypoint& b) { return a.tick < b.tick; });
+
+		for (Tempo tempo : pasteData.tempoChanges)
+		{
+			tempo.tick += pasteData.offsetTicks;
+			if (tempo.tick < 0)
+				continue;
+			const bool duplicate = std::any_of(score.tempoChanges.begin(), score.tempoChanges.end(),
+			                                   [&tempo](const Tempo& existing)
+			                                   { return existing.tick == tempo.tick; });
+			if (duplicate)
+				continue;
+			tempo.runtimeId = getNextTempoRuntimeID();
+			score.tempoChanges.push_back(tempo);
+			pastedMetaEvents.push_back({ MetaEventKind::Bpm, tempo.runtimeId });
+		}
+		std::sort(score.tempoChanges.begin(), score.tempoChanges.end(),
+		          [](const Tempo& a, const Tempo& b) { return a.tick < b.tick; });
+
+		const int targetBaseMeasure =
+		    accumulateMeasures(std::max(0, pasteData.offsetTicks), TICKS_PER_BEAT,
+		                       score.timeSignatures);
+		for (TimeSignature timeSignature : pasteData.timeSignatures)
+		{
+			timeSignature.measure += targetBaseMeasure;
+			if (timeSignature.measure < 0 ||
+			    score.timeSignatures.find(timeSignature.measure) != score.timeSignatures.end())
+			{
+				continue;
+			}
+			score.timeSignatures[timeSignature.measure] = timeSignature;
+			pastedMetaEvents.push_back(
+			    { MetaEventKind::TimeSignature, static_cast<id_t>(timeSignature.measure) });
+		}
+
+		for (SkillTrigger skill : pasteData.skills)
+		{
+			skill.ID = getNextSkillID();
+			skill.tick += pasteData.offsetTicks;
+			if (skill.tick < 0)
+				continue;
+			score.skills[skill.ID] = skill;
+			pastedMetaEvents.push_back({ MetaEventKind::Skill, skill.ID });
+		}
+
+		if (pasteData.hasFever)
+		{
+			score.fever.startTick = pasteData.fever.startTick + pasteData.offsetTicks;
+			score.fever.endTick = pasteData.fever.endTick + pasteData.offsetTicks;
+			if (score.fever.startTick > score.fever.endTick)
+				std::swap(score.fever.startTick, score.fever.endTick);
+			if (score.fever.startTick < 0 || score.fever.endTick < 0)
+			{
+				score.fever.startTick = score.fever.endTick = -1;
+			}
+			else
+			{
+				pastedMetaEvents.push_back({ MetaEventKind::FeverStart, 0 });
+				pastedMetaEvents.push_back({ MetaEventKind::FeverEnd, 0 });
+			}
+		}
+
 		// select newly pasted notes
-		selectedNotes.clear();
-		selectedHiSpeedChanges.clear();
+		clearSelection();
 		std::transform(pasteData.notes.begin(), pasteData.notes.end(),
 		               std::inserter(selectedNotes, selectedNotes.end()),
 		               [this](const auto& it) { return it.second.ID; });
@@ -794,6 +1161,7 @@ namespace MikuMikuWorld
 		std::transform(pasteData.hiSpeedChanges.begin(), pasteData.hiSpeedChanges.end(),
 		               std::inserter(selectedHiSpeedChanges, selectedHiSpeedChanges.end()),
 		               [this](const auto& it) { return it.second.ID; });
+		selectedMetaEvents.insert(pastedMetaEvents.begin(), pastedMetaEvents.end());
 
 		pasteData.pasting = false;
 		pushHistory("Paste notes", prev, score);
@@ -1397,6 +1765,7 @@ namespace MikuMikuWorld
 		if (history.hasUndo())
 		{
 			score = history.undo();
+			assignMissingMetaEventRuntimeIds();
 			clearSelection();
 
 			UI::setWindowTitle((workingData.filename.size()
@@ -1415,6 +1784,7 @@ namespace MikuMikuWorld
 		if (history.hasRedo())
 		{
 			score = history.redo();
+			assignMissingMetaEventRuntimeIds();
 			clearSelection();
 
 			UI::setWindowTitle((workingData.filename.size()

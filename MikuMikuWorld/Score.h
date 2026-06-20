@@ -12,6 +12,8 @@ namespace MikuMikuWorld
 {
 	id_t getNextSkillID();
 	id_t getNextHiSpeedID();
+	id_t getNextTempoRuntimeID();
+	id_t getNextWaypointRuntimeID();
 
 	enum class SkillEffect : uint8_t
 	{
@@ -55,6 +57,7 @@ namespace MikuMikuWorld
 	{
 		std::string name;
 		int tick;
+		id_t runtimeId = static_cast<id_t>(-1);
 	};
 	
 	struct HiSpeedChange

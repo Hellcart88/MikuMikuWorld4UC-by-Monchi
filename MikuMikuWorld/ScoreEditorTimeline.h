@@ -7,6 +7,8 @@
 #include "Rendering/Renderer.h"
 #include "ScoreContext.h"
 #include "TimelineMode.h"
+#include <map>
+#include <set>
 
 namespace MikuMikuWorld
 {
@@ -137,6 +139,14 @@ namespace MikuMikuWorld
 		ImVec2 ctrlMousePos;
 		ImVec2 dragStart;
 		ImVec2 mousePos;
+		std::map<SelectedMetaEvent, ImRect> metaEventRects;
+		bool isHoldingMetaEvent{ false };
+		bool isMovingMetaEvent{ false };
+		SelectedMetaEvent holdingMetaEvent{};
+		std::set<SelectedMetaEvent> metaEventDragSelection;
+		Score metaEventDragStartScore;
+		int metaEventDragStartTick{};
+		int metaEventDragStartMeasure{};
 
 		Score prevUpdateScore;
 
@@ -180,6 +190,8 @@ namespace MikuMikuWorld
 		bool isMouseInFeverDisplayLane(const ScoreContext& context) const;
 		int getSnapStepTicks() const;
 		void drawLeftMetaEventClusters(ScoreContext& context);
+		void openMetaEventEditor(ScoreContext& context, const SelectedMetaEvent& event);
+		void updateMetaEventDrag(ScoreContext& context);
 
 		void drawWaveform(ScoreContext& context);
 		void drawHiSpeedGraph(ScoreContext& context);
@@ -219,10 +231,10 @@ namespace MikuMikuWorld
 		bool skillControl(const ScoreContext& context, int tick, SkillEffect effect, int level,
 		                  bool enabled);
 		bool skillControl(const ScoreContext& context, int tick, bool enabled);
-		bool feverControl(const ScoreContext& context, const Fever& fever);
-		bool feverRangeControl(const ScoreContext& context, int startTick, int endTick,
+		bool feverControl(ScoreContext& context, const Fever& fever);
+		bool feverRangeControl(ScoreContext& context, int startTick, int endTick,
 		                       bool enabled);
-		bool feverControl(const ScoreContext& context, int tick, bool start, bool enabled);
+		bool feverControl(ScoreContext& context, int tick, bool start, bool enabled);
 		bool hiSpeedControl(const ScoreContext& context, const HiSpeedChange& hiSpeed);
 		bool hiSpeedControl(const ScoreContext& context, int tick, float speed, int layer,
 		                    float skip, HiSpeedEaseType ease, bool hideNotes,
@@ -232,7 +244,7 @@ namespace MikuMikuWorld
 
 		void drawInputNote(Renderer* renderer);
 		void previewInput(const ScoreContext& context, EditArgs& edit, Renderer* renderer);
-		void previewFeverInput(const ScoreContext& context);
+		void previewFeverInput(ScoreContext& context);
 		void previewPaste(ScoreContext& context, Renderer* renderer);
 		void executeInput(ScoreContext& context, EditArgs& edit);
 		void updateFeverInsertion(ScoreContext& context);
