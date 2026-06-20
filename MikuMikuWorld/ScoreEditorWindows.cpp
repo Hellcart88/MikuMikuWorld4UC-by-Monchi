@@ -2638,6 +2638,26 @@ namespace MikuMikuWorld
 		ImVec4 activeBgColor = ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive);
 		ImVec4 activeTextColor = getContrastColor(activeBgColor);
 
+		auto normalizeWaypointSelection = [&]()
+		{
+			const int waypointCount = static_cast<int>(context.score.waypoints.size());
+			if (waypointCount <= 0)
+			{
+				selectedWaypointIndex = -1;
+				renameIndex = -1;
+				return;
+			}
+
+			if (selectedWaypointIndex >= waypointCount)
+				selectedWaypointIndex = waypointCount - 1;
+			if (selectedWaypointIndex < -1)
+				selectedWaypointIndex = -1;
+			if (renameIndex >= waypointCount)
+				renameIndex = -1;
+		};
+
+		normalizeWaypointSelection();
+
 		if (ImGui::Begin(IMGUI_TITLE(ICON_FA_LOCATION_ARROW, "waypoints")))
 		{
 			ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
@@ -2676,9 +2696,15 @@ namespace MikuMikuWorld
 			if (!canDelete) ImGui::BeginDisabled();
 			if (UI::transparentButton(ICON_FA_TRASH, ImVec2(waypointButtonHeight, waypointButtonHeight), false))
 			{
-				context.score.waypoints.erase(context.score.waypoints.begin() + selectedWaypointIndex);
-				if (selectedWaypointIndex >= context.score.waypoints.size()) selectedWaypointIndex--; 
-				renameIndex = -1;
+				if (canDelete)
+				{
+					context.score.waypoints.erase(context.score.waypoints.begin() + selectedWaypointIndex);
+					if (renameIndex == selectedWaypointIndex)
+						renameIndex = -1;
+					else if (renameIndex > selectedWaypointIndex)
+						renameIndex--;
+					normalizeWaypointSelection();
+				}
 			}
 			if (!canDelete) ImGui::EndDisabled();
 
