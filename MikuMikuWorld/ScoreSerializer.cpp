@@ -12,8 +12,15 @@ namespace MikuMikuWorld
 	ScoreSerializeController::toSerializeFormat(const std::string_view& filename)
 	{
 		const auto hasExtension = IO::endsWith;
-		if (hasExtension(filename, MMWS_EXTENSION) || hasExtension(filename, CC_MMWS_EXTENSION) ||
-		    hasExtension(filename, UC_MMWS_EXTENSION))
+		if (hasExtension(filename, MCH_MMWS_EXTENSION))
+		{
+			return SerializeFormat::MonchiNativeFormat;
+		}
+		else if (hasExtension(filename, UC_MMWS_EXTENSION))
+		{
+			return SerializeFormat::UntitledChartsNativeFormat;
+		}
+		else if (hasExtension(filename, MMWS_EXTENSION) || hasExtension(filename, CC_MMWS_EXTENSION))
 		{
 			return SerializeFormat::NativeFormat;
 		}
@@ -43,6 +50,10 @@ namespace MikuMikuWorld
 	{
 		switch (format)
 		{
+		case SerializeFormat::MonchiNativeFormat:
+			return IO::mchMmwsFilter;
+		case SerializeFormat::UntitledChartsNativeFormat:
+			return IO::ucMmwsFilter;
 		case SerializeFormat::NativeFormat:
 			return IO::mmwsFilter;
 		case SerializeFormat::SusFormat:
@@ -60,8 +71,12 @@ namespace MikuMikuWorld
 	{
 		switch (format)
 		{
-		case SerializeFormat::NativeFormat:
+		case SerializeFormat::MonchiNativeFormat:
+			return "mchmmws";
+		case SerializeFormat::UntitledChartsNativeFormat:
 			return "unchmmws";
+		case SerializeFormat::NativeFormat:
+			return "mchmmws";
 		case SerializeFormat::SusFormat:
 			return "sus";
 		case SerializeFormat::UscFormat:

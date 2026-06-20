@@ -1,5 +1,6 @@
 #include "NativeScoreSerializer.h"
 #include <algorithm>
+#include <cctype>
 
 namespace MikuMikuWorld
 {
@@ -20,7 +21,9 @@ namespace MikuMikuWorld
 	const char* CC_MMWS_SIGNATURE = "CCMMWS";
 	// Version 1: Revert version to int32, support dummy note, dummy hold
 	// Version 2: Support hispeed easing, skip, hides note; down flicks
-	const int UC_MMWS_VERSION = 2;
+	// Version 3: Note data structure refactor; skill effects; sound effect; life point; hold layer
+	// Version 4: Force note speed
+	const int UC_MMWS_VERSION = 4;
 	const char* UC_MMWS_SIGNATURE = "UCMMWS";
 	// Version 1: Monchi native layout based on UC v2 plus life point, extended skill,
 	// sound effect, hold step layer, and force note speed.
@@ -42,6 +45,22 @@ namespace MikuMikuWorld
 		HOLD_END_HIDDEN = 1 << 1,
 		HOLD_GUIDE = 1 << 2,
 		HOLD_DUMMY = 1 << 3
+	};
+
+	enum ExtendedNoteFlags
+	{
+		EXT_NOTE_CRITICAL = 1 << 0,
+		EXT_NOTE_TRACE = 1 << 1,
+		EXT_NOTE_DUMMY = 1 << 2,
+		EXT_NOTE_ATTACHED = 1 << 3,
+		EXT_NOTE_HIDDEN = 1 << 4,
+	};
+
+	enum ExtendedHoldStepFlags
+	{
+		EXT_HOLD_STEP_CRITICAL = 1 << 0,
+		EXT_HOLD_STEP_DUMMY = 1 << 1,
+		EXT_HOLD_STEP_GUIDE = 1 << 2,
 	};
 
 	enum LayerFlags
@@ -68,7 +87,7 @@ namespace MikuMikuWorld
 
 		static ScoreVersion Monchi(int mchVersion)
 		{
-			ScoreVersion result(UC_MMWS_VERSION);
+			ScoreVersion result(2);
 			result.monchiVersion = mchVersion;
 			return result;
 		}
@@ -89,6 +108,7 @@ namespace MikuMikuWorld
 		inline bool supportDummyNote() const { return cyanvasVersion >= 6 && untitledVersion >= 1; }
 		inline bool supportHispeedSkipEase() const { return untitledVersion >= 2; }
 		inline bool supportDownFlick() const { return untitledVersion >= 2; }
+		inline bool supportExtendedNote() const { return !isMonchiNative() && untitledVersion >= 3; }
 		inline bool supportExtendedSkill() const { return isMonchiNative() || untitledVersion >= 3; }
 		inline bool supportSoundEffect() const { return isMonchiNative() || untitledVersion >= 3; }
 		inline bool supportLifePoint() const { return isMonchiNative() || untitledVersion >= 3; }
@@ -149,31 +169,141 @@ namespace MikuMikuWorld
 			layer.inFolder = (flags & LAYER_IN_FOLDER) != 0;
 			layer.isCollapsed = (flags & LAYER_IS_COLLAPSED) != 0;
 		}
+
+		std::string toLowerExtension(const std::string& filename)
+		{
+			std::string extension = IO::File::getFileExtension(filename);
+			std::transform(extension.begin(), extension.end(), extension.begin(),
+			               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+			return extension;
+		}
+
+		unsigned int toExtendedNoteFlags(const Note& note, unsigned int extraFlags = 0)
+		{
+			unsigned int flags = extraFlags;
+			if (note.critical)
+				flags |= EXT_NOTE_CRITICAL;
+			if (note.friction)
+				flags |= EXT_NOTE_TRACE;
+			if (note.dummy)
+				flags |= EXT_NOTE_DUMMY;
+			return flags;
+		}
+
+		unsigned int toExtendedHoldStepFlags(const HoldNote& hold, const Note& start)
+		{
+			unsigned int flags = 0;
+			if (start.critical)
+				flags |= EXT_HOLD_STEP_CRITICAL;
+			if (hold.dummy)
+				flags |= EXT_HOLD_STEP_DUMMY;
+			if (hold.isGuide())
+				flags |= EXT_HOLD_STEP_GUIDE;
+			return flags;
+		}
+
+		unsigned int toExtendedNoteType(NoteType type)
+		{
+			switch (type)
+			{
+			case NoteType::HoldMid:
+				return 1; // Tick
+			case NoteType::Damage:
+				return 2; // Damage
+			default:
+				return 0; // Tap
+			}
+		}
+
+		void writeUntitledChartsNote(const Note& note, IO::BinaryWriter& writer,
+		                             NoteType serializedType, unsigned int extraFlags = 0,
+		                             EaseType ease = EaseType::Linear)
+		{
+			writer.writeInt32(note.tick);
+			writer.writeSingle(note.lane);
+			writer.writeSingle(note.width);
+			writer.writeInt32(static_cast<int>(note.soundEffect));
+			writer.writeInt32(note.layer);
+			writer.writeInt32(toExtendedNoteType(serializedType));
+			writer.writeInt32(toExtendedNoteFlags(note, extraFlags));
+			writer.writeInt32(static_cast<int>(note.flick));
+			writer.writeInt32(static_cast<int>(ease));
+			writer.writeSingle(1.0f);
+		}
+	}
+
+	NativeScoreSerializer::NativeScoreSerializer(NativeScoreFormat targetFormat)
+	    : targetFormat(targetFormat)
+	{
 	}
 
 	Note NativeScoreSerializer::readNote(NoteType type, IO::BinaryReader& reader,
-	                                     const ScoreVersion& version)
+	                                     const ScoreVersion& version,
+	                                     unsigned int* extendedFlags,
+	                                     EaseType* extendedEase)
 	{
-		Note note(type);
+		int tick{};
+		float lane{};
+		float width{};
 
 		if (version.supportFloatingLaneWidth())
 		{
-			note.tick = reader.readUInt32();
-			note.lane = reader.readSingle();
-			note.width = reader.readSingle();
+			tick = reader.readUInt32();
+			lane = reader.readSingle();
+			width = reader.readSingle();
 		}
 		else
 		{
-			note.tick = reader.readUInt32();
-			note.lane = reader.readUInt32();
-			note.width = reader.readUInt32();
+			tick = reader.readUInt32();
+			lane = reader.readUInt32();
+			width = reader.readUInt32();
 		}
 
+		SoundEffectType soundEffect = SoundEffectType::Default;
 		if (version.supportSoundEffect())
-			note.soundEffect = readSoundEffect(reader.readUInt32());
+			soundEffect = readSoundEffect(reader.readUInt32());
 
+		int layer = 0;
 		if (version.supportLayers())
-			note.layer = reader.readUInt32();
+			layer = reader.readUInt32();
+
+		if (version.supportExtendedNote())
+		{
+			unsigned int storedType = reader.readUInt32();
+			unsigned int flags = reader.readUInt32();
+			FlickType flick = static_cast<FlickType>(reader.readUInt32());
+			EaseType ease = static_cast<EaseType>(reader.readUInt32());
+			reader.readSingle(); // guideAlpha; Monchi native score currently has no field for this.
+
+			NoteType resolvedType = type;
+			if (type == NoteType::Tap || type == NoteType::Damage)
+				resolvedType = storedType == 2 ? NoteType::Damage : NoteType::Tap;
+
+			Note note(resolvedType);
+			note.tick = tick;
+			note.lane = lane;
+			note.width = width;
+			note.soundEffect = soundEffect;
+			note.layer = layer;
+			note.flick = flick >= FlickType::FlickTypeCount ? FlickType::Default : flick;
+			note.critical = (flags & EXT_NOTE_CRITICAL) != 0;
+			note.friction = (flags & EXT_NOTE_TRACE) != 0;
+			note.dummy = (flags & EXT_NOTE_DUMMY) != 0;
+
+			if (extendedFlags)
+				*extendedFlags = flags;
+			if (extendedEase)
+				*extendedEase = ease >= EaseType::EaseTypeCount ? EaseType::Linear : ease;
+
+			return note;
+		}
+
+		Note note(type);
+		note.tick = tick;
+		note.lane = lane;
+		note.width = width;
+		note.soundEffect = soundEffect;
+		note.layer = layer;
 
 		if (!note.hasEase())
 		{
@@ -228,6 +358,9 @@ namespace MikuMikuWorld
 		if (version.supportLaneExtension())
 			metadata.laneExtension = reader.readUInt32();
 
+		if (version.supportExtendedNote())
+			reader.readUInt32(); // isExtendedScore; Monchi native score is always edited as extended.
+
 		if (version.supportLifePoint())
 			metadata.baseLifePoint = reader.readUInt32();
 
@@ -244,6 +377,20 @@ namespace MikuMikuWorld
 		writer.writeSingle(metadata.musicOffset);
 		writer.writeString(metadata.jacketFile);
 		writer.writeInt32(metadata.laneExtension);
+		writer.writeInt32(metadata.baseLifePoint);
+	}
+
+	void NativeScoreSerializer::writeUntitledChartsMetadata(const ScoreMetadata& metadata,
+	                                                        IO::BinaryWriter& writer)
+	{
+		writer.writeString(metadata.title);
+		writer.writeString(metadata.author);
+		writer.writeString(metadata.artist);
+		writer.writeString(metadata.musicFile);
+		writer.writeSingle(metadata.musicOffset);
+		writer.writeString(metadata.jacketFile);
+		writer.writeInt32(metadata.laneExtension);
+		writer.writeInt32(1); // isExtendedScore
 		writer.writeInt32(metadata.baseLifePoint);
 	}
 
@@ -380,9 +527,6 @@ namespace MikuMikuWorld
 		else if (signature == UC_MMWS_SIGNATURE)
 		{
 			int ucVersion = reader.readUInt32();
-			if (ucVersion > UC_MMWS_VERSION)
-				throw std::runtime_error(
-				    "Importing upstream UCMMWS v3/v4 is not implemented yet.");
 			version = ScoreVersion(ucVersion);
 		}
 		else if (signature == CC_MMWS_SIGNATURE)
@@ -454,22 +598,31 @@ namespace MikuMikuWorld
 			if (version.supportGuideNote())
 				flags = reader.readUInt32();
 
-			if (flags & HOLD_START_HIDDEN)
+			if (!version.supportExtendedNote() && (flags & HOLD_START_HIDDEN))
 				hold.startType = HoldNoteType::Hidden;
 
-			if (flags & HOLD_END_HIDDEN)
+			if (!version.supportExtendedNote() && (flags & HOLD_END_HIDDEN))
 				hold.endType = HoldNoteType::Hidden;
 
-			if (flags & HOLD_GUIDE)
+			if ((!version.supportExtendedNote() && (flags & HOLD_GUIDE)) ||
+			    (version.supportExtendedNote() && (flags & EXT_HOLD_STEP_GUIDE)))
 				hold.startType = hold.endType = HoldNoteType::Guide;
 
-			if (flags & HOLD_DUMMY)
+			if ((!version.supportExtendedNote() && (flags & HOLD_DUMMY)) ||
+			    (version.supportExtendedNote() && (flags & EXT_HOLD_STEP_DUMMY)))
 				hold.dummy = true;
 
-			Note start = readNote(NoteType::Hold, reader, version);
+			unsigned int startFlags{};
+			EaseType startEase = EaseType::Linear;
+			Note start = readNote(NoteType::Hold, reader, version, &startFlags, &startEase);
 			start.ID = Note::getNextID();
-			hold.start.ease = static_cast<EaseType>(reader.readUInt32());
+			hold.start.ease = version.supportExtendedNote()
+			                      ? startEase
+			                      : static_cast<EaseType>(reader.readUInt32());
 			hold.start.ID = start.ID;
+			if (version.supportExtendedNote() && hold.startType != HoldNoteType::Guide &&
+			    (startFlags & EXT_NOTE_HIDDEN))
+				hold.startType = HoldNoteType::Hidden;
 			if (version.supportFadeType())
 			{
 				hold.fadeType = static_cast<FadeType>(reader.readUInt32());
@@ -490,24 +643,57 @@ namespace MikuMikuWorld
 			hold.steps.reserve(stepCount);
 			for (int i = 0; i < stepCount; ++i)
 			{
-				Note mid = readNote(NoteType::HoldMid, reader, version);
+				unsigned int midFlags{};
+				EaseType midEase = EaseType::Linear;
+				Note mid = readNote(NoteType::HoldMid, reader, version, &midFlags, &midEase);
 				mid.ID = Note::getNextID();
 				mid.parentID = start.ID;
 				score.notes[mid.ID] = mid;
 
 				HoldStep step{};
-				step.type = static_cast<HoldStepType>(reader.readUInt32());
-				step.ease = static_cast<EaseType>(reader.readUInt32());
-				if (version.supportHoldLayer())
-					step.layer = readHoldStepLayer(reader.readUInt32());
+				if (version.supportExtendedNote())
+				{
+					step.type = (midFlags & EXT_NOTE_HIDDEN) != 0
+					                ? HoldStepType::Hidden
+					                : (midFlags & EXT_NOTE_ATTACHED) != 0 ? HoldStepType::Skip
+					                                                       : HoldStepType::Normal;
+					step.ease = midEase;
+				}
+				else
+				{
+					step.type = static_cast<HoldStepType>(reader.readUInt32());
+					step.ease = static_cast<EaseType>(reader.readUInt32());
+					if (version.supportHoldLayer())
+						step.layer = readHoldStepLayer(reader.readUInt32());
+				}
 				step.ID = mid.ID;
 				hold.steps.push_back(step);
 			}
 
-			Note end = readNote(NoteType::HoldEnd, reader, version);
+			unsigned int endFlags{};
+			Note end = readNote(NoteType::HoldEnd, reader, version, &endFlags);
 			end.ID = Note::getNextID();
 			end.parentID = start.ID;
 			score.notes[end.ID] = end;
+			if (version.supportExtendedNote() && hold.endType != HoldNoteType::Guide &&
+			    (endFlags & EXT_NOTE_HIDDEN))
+				hold.endType = HoldNoteType::Hidden;
+
+			if (version.supportExtendedNote())
+			{
+				int separatorCount = reader.readUInt32();
+				for (int separatorIndex = 0; separatorIndex < separatorCount; ++separatorIndex)
+				{
+					int stepIndex = reader.readUInt32();
+					reader.readUInt32(); // separator flags
+					reader.readUInt32(); // guide color
+					HoldStepLayer layer = readHoldStepLayer(reader.readUInt32());
+					if (stepIndex == 0)
+						hold.start.layer = layer;
+					else if (stepIndex > 0 && stepIndex <= hold.steps.size())
+						hold.steps[stepIndex - 1].layer = layer;
+				}
+			}
 
 			hold.end = end.ID;
 			score.holdNotes[start.ID] = hold;
@@ -585,7 +771,7 @@ namespace MikuMikuWorld
 		return score;
 	}
 
-	void NativeScoreSerializer::serialize(const Score& score, std::string filename)
+	void NativeScoreSerializer::serializeMonchi(const Score& score, std::string filename)
 	{
 		IO::BinaryWriter writer(filename);
 		if (!writer.isStreamValid())
@@ -728,5 +914,139 @@ namespace MikuMikuWorld
 		writer.close();
 	}
 
+	void NativeScoreSerializer::serializeUntitledCharts(const Score& score, std::string filename)
+	{
+		IO::BinaryWriter writer(filename);
+		if (!writer.isStreamValid())
+			return;
+
+		writer.writeString(UC_MMWS_SIGNATURE);
+		writer.writeInt32(UC_MMWS_VERSION);
+
+		uint32_t offsetsAddress = writer.getStreamPosition();
+		writer.writeNull(sizeof(uint32_t) * 7);
+
+		uint32_t metadataAddress = writer.getStreamPosition();
+		writeUntitledChartsMetadata(score.metadata, writer);
+
+		uint32_t eventsAddress = writer.getStreamPosition();
+		writeScoreEvents(score, writer);
+
+		uint32_t tapsAddress = writer.getStreamPosition();
+		writer.writeNull(sizeof(uint32_t));
+
+		int noteCount = 0;
+		for (const auto& [id, note] : score.notes)
+		{
+			if (note.isHold())
+				continue;
+
+			writeUntitledChartsNote(note, writer, note.getType());
+			++noteCount;
+		}
+
+		uint32_t holdsAddress = writer.getStreamPosition();
+		writer.seek(tapsAddress);
+		writer.writeInt32(noteCount);
+		writer.seek(holdsAddress);
+
+		writer.writeInt32(score.holdNotes.size());
+		for (const auto& [id, hold] : score.holdNotes)
+		{
+			const Note& start = score.notes.at(hold.start.ID);
+			writer.writeInt32(toExtendedHoldStepFlags(hold, start));
+
+			unsigned int startFlags = 0;
+			if (hold.startType == HoldNoteType::Hidden || hold.startType == HoldNoteType::Guide)
+				startFlags |= EXT_NOTE_HIDDEN;
+			writeUntitledChartsNote(start, writer, NoteType::Tap, startFlags, hold.start.ease);
+			writer.writeInt32((int)hold.fadeType);
+			writer.writeInt32((int)hold.guideColor);
+			writer.writeInt32((int)hold.start.layer);
+
+			int stepCount = static_cast<int>(hold.steps.size());
+			writer.writeInt32(stepCount);
+			for (const auto& step : hold.steps)
+			{
+				const Note& mid = score.notes.at(step.ID);
+				unsigned int stepFlags = 0;
+				if (step.type == HoldStepType::Hidden)
+					stepFlags |= EXT_NOTE_HIDDEN;
+				else if (step.type == HoldStepType::Skip)
+					stepFlags |= EXT_NOTE_ATTACHED;
+				writeUntitledChartsNote(mid, writer, NoteType::HoldMid, stepFlags, step.ease);
+			}
+
+			const Note& end = score.notes.at(hold.end);
+			unsigned int endFlags = 0;
+			if (hold.endType == HoldNoteType::Hidden || hold.endType == HoldNoteType::Guide)
+				endFlags |= EXT_NOTE_HIDDEN;
+			writeUntitledChartsNote(end, writer, NoteType::Tap, endFlags);
+
+			writer.writeInt32(stepCount);
+			for (int stepIndex = 0; stepIndex < stepCount; ++stepIndex)
+			{
+				const HoldStep& step = hold.steps[stepIndex];
+				writer.writeInt32(stepIndex + 1);
+				writer.writeInt32(0);
+				writer.writeInt32((int)hold.guideColor);
+				writer.writeInt32((int)step.layer);
+			}
+		}
+
+		uint32_t damagesAddress = writer.getStreamPosition();
+		writer.writeInt32(0);
+
+		uint32_t layersAddress = writer.getStreamPosition();
+		writer.writeInt32(score.layers.size());
+		for (const auto& layer : score.layers)
+		{
+			writer.writeString(layer.name);
+			writer.writeSingle(layer.forceNoteSpeed);
+		}
+
+		uint32_t waypointsAddress = writer.getStreamPosition();
+		writer.writeInt32(score.waypoints.size());
+		for (const auto& waypoint : score.waypoints)
+		{
+			writer.writeString(waypoint.name);
+			writer.writeInt32(waypoint.tick);
+		}
+
+		writer.seek(offsetsAddress);
+		writer.writeInt32(metadataAddress);
+		writer.writeInt32(eventsAddress);
+		writer.writeInt32(tapsAddress);
+		writer.writeInt32(holdsAddress);
+		writer.writeInt32(damagesAddress);
+		writer.writeInt32(layersAddress);
+		writer.writeInt32(waypointsAddress);
+
+		writer.flush();
+		writer.close();
+	}
+
+	void NativeScoreSerializer::serialize(const Score& score, std::string filename)
+	{
+		NativeScoreFormat format = targetFormat;
+		if (format == NativeScoreFormat::Auto)
+			format = toLowerExtension(filename) == UC_MMWS_EXTENSION
+			             ? NativeScoreFormat::UntitledCharts
+			             : NativeScoreFormat::Monchi;
+
+		if (format == NativeScoreFormat::UntitledCharts)
+			serializeUntitledCharts(score, filename);
+		else
+			serializeMonchi(score, filename);
+	}
+
 	bool NativeScoreSerializer::canSerialize(const Score& score) { return true; }
+
+	bool NativeScoreSerializer::hasMonchiNativeOnlyData(const Score& score)
+	{
+		return std::any_of(score.layers.begin(), score.layers.end(), [](const Layer& layer)
+		{
+			return layer.hidden || layer.isFolder || layer.inFolder || layer.isCollapsed;
+		});
+	}
 }

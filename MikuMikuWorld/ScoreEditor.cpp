@@ -145,6 +145,75 @@ namespace MikuMikuWorld
 		return false;
 	}
 
+	std::string getLowerExtension(const std::string& filename)
+	{
+		std::string extension = IO::File::getFileExtension(filename);
+		std::transform(extension.begin(), extension.end(), extension.begin(),
+		               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		return extension;
+	}
+
+	std::string replaceExtension(std::string filename, const char* extension)
+	{
+		const size_t slash = filename.find_last_of("\\/");
+		const size_t dot = filename.find_last_of('.');
+		if (dot != std::string::npos && (slash == std::string::npos || dot > slash))
+			filename.erase(dot);
+		filename += extension;
+		return filename;
+	}
+
+	const char* getNativeExtensionForFilter(uint32_t filterIndex)
+	{
+		switch (filterIndex)
+		{
+		case 1:
+			return UC_MMWS_EXTENSION;
+		case 2:
+			return CC_MMWS_EXTENSION;
+		case 3:
+			return MMWS_EXTENSION;
+		default:
+			return MCH_MMWS_EXTENSION;
+		}
+	}
+
+	std::string ensureNativeSaveExtension(const std::string& filename, uint32_t filterIndex)
+	{
+		const std::string extension = getLowerExtension(filename);
+		if (extension == MCH_MMWS_EXTENSION || extension == UC_MMWS_EXTENSION ||
+		    extension == CC_MMWS_EXTENSION || extension == MMWS_EXTENSION)
+			return filename;
+
+		return filename + getNativeExtensionForFilter(filterIndex);
+	}
+
+	NativeScoreFormat getNativeFormatForFilename(const std::string& filename)
+	{
+		return getLowerExtension(filename) == UC_MMWS_EXTENSION ? NativeScoreFormat::UntitledCharts
+		                                                        : NativeScoreFormat::Monchi;
+	}
+
+	IO::MessageBoxResult warnUntitledChartsDropsMonchiData(bool regularSave)
+	{
+		const std::string message =
+		    regularSave
+		        ? "This score contains Monchi-only editor data.\n"
+		          "The current save target is .unchmmws.\n"
+		          "Saving as .unchmmws will not preserve that Monchi-only data.\n\n"
+		          "Yes: save as .mchmmws instead\n"
+		          "No: save as .unchmmws anyway\n"
+		          "Cancel: cancel saving"
+		        : "This score contains Monchi-only editor data.\n"
+		          "Saving as UntitledCharts (.unchmmws) will not preserve that Monchi-only data.\n\n"
+		          "Yes: save as .mchmmws instead\n"
+		          "No: save as .unchmmws anyway\n"
+		          "Cancel: cancel saving";
+		return IO::messageBox(APP_NAME, message, IO::MessageBoxButtons::YesNoCancel,
+		                      IO::MessageBoxIcon::Warning,
+		                      Application::windowState.windowHandle);
+	}
+
 
 	ScoreEditor::ScoreEditor()
 	{
@@ -603,8 +672,31 @@ namespace MikuMikuWorld
 	{
 		try
 		{
+			std::string extension = getLowerExtension(filename);
+			if (extension != MCH_MMWS_EXTENSION && extension != UC_MMWS_EXTENSION)
+			{
+				filename = replaceExtension(filename, MCH_MMWS_EXTENSION);
+				extension = MCH_MMWS_EXTENSION;
+				context.workingData.filename = filename;
+			}
+
+			if (extension == UC_MMWS_EXTENSION &&
+			    NativeScoreSerializer::hasMonchiNativeOnlyData(context.score))
+			{
+				IO::MessageBoxResult result = warnUntitledChartsDropsMonchiData(true);
+				if (result == IO::MessageBoxResult::Cancel)
+					return false;
+				if (result == IO::MessageBoxResult::Yes)
+				{
+					filename = replaceExtension(filename, MCH_MMWS_EXTENSION);
+					extension = MCH_MMWS_EXTENSION;
+					context.workingData.filename = filename;
+				}
+			}
+
 			context.score.metadata = context.workingData.toScoreMetadata();
-			NativeScoreSerializer().serialize(context.score, filename);
+			NativeScoreSerializer(getNativeFormatForFilename(filename)).serialize(context.score,
+			                                                                      filename);
 
 			UI::setWindowTitle(IO::File::getFilename(filename));
 			context.upToDate = true;
@@ -625,18 +717,20 @@ namespace MikuMikuWorld
 	{
 		IO::FileDialog fileDialog{};
 		fileDialog.title = "Save Chart";
-		fileDialog.filters = { IO::mmwsFilter };
-		fileDialog.defaultExtension = "ucmmws";
+		fileDialog.filters = { IO::mchMmwsFilter, IO::ucMmwsFilter };
+		fileDialog.filterIndex =
+		    getLowerExtension(context.workingData.filename) == UC_MMWS_EXTENSION ? 1 : 0;
 		fileDialog.parentWindowHandle = Application::windowState.windowHandle;
 		fileDialog.inputFilename =
 		    IO::File::getFilenameWithoutExtension(context.workingData.filename);
 
 		if (fileDialog.saveFile() == IO::FileDialogResult::OK)
 		{
-			context.workingData.filename = fileDialog.outputFilename;
+			context.workingData.filename =
+			    ensureNativeSaveExtension(fileDialog.outputFilename, fileDialog.filterIndex);
 			bool saved = save(context.workingData.filename);
 			if (saved)
-				updateRecentFilesList(fileDialog.outputFilename);
+				updateRecentFilesList(context.workingData.filename);
 
 			return saved;
 		}
@@ -975,7 +1069,7 @@ namespace MikuMikuWorld
 		context.score.metadata = context.workingData.toScoreMetadata();
 		NativeScoreSerializer().serialize(context.score, autoSavePath + "\\auto_save_" +
 		                                                     Utilities::getCurrentDateTime() +
-		                                                     UC_MMWS_EXTENSION);
+		                                                     MCH_MMWS_EXTENSION);
 
 		// get mmws files
 		int mmwsCount = 0;
@@ -983,7 +1077,7 @@ namespace MikuMikuWorld
 		{
 			std::string extension = file.path().extension().string();
 			std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
-			mmwsCount += extension == UC_MMWS_EXTENSION;
+			mmwsCount += extension == MCH_MMWS_EXTENSION || extension == UC_MMWS_EXTENSION;
 		}
 
 		// delete older files
@@ -1004,7 +1098,7 @@ namespace MikuMikuWorld
 		{
 			std::string extension = file.path().extension().string();
 			std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
-			if (extension == UC_MMWS_EXTENSION)
+			if (extension == MCH_MMWS_EXTENSION || extension == UC_MMWS_EXTENSION)
 				deleteFiles.push_back(file);
 		}
 

@@ -118,6 +118,10 @@ namespace IO
 	}
 
 	extern FileDialogFilter mmwsFilter;
+	extern FileDialogFilter mchMmwsFilter;
+	extern FileDialogFilter ucMmwsFilter;
+	extern FileDialogFilter ccMmwsFilter;
+	extern FileDialogFilter legacyMmwsFilter;
 	extern FileDialogFilter susFilter;
 	extern FileDialogFilter uscFilter;
 	extern FileDialogFilter lvlDatFilter;

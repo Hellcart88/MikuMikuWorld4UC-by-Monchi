@@ -20,6 +20,8 @@ namespace MikuMikuWorld
 
 	enum class SerializeFormat
 	{
+		MonchiNativeFormat,
+		UntitledChartsNativeFormat,
 		NativeFormat,
 		SusFormat,
 		UscFormat,

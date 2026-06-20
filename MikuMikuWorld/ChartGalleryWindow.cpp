@@ -306,7 +306,8 @@ namespace MikuMikuWorld
 					for (const auto& e : std::filesystem::recursive_directory_iterator(wp)) {
 						if (e.is_regular_file()) {
 							std::string ex = e.path().extension().string();
-							if (ex == ".mmws" || ex == ".ccmmws" || ex == ".unchmmws") {
+							if (ex == ".mmws" || ex == ".ccmmws" || ex == ".unchmmws" ||
+							    ex == ".mchmmws") {
 								localItems.push_back(loadItemInfo(IO::wideStringToMb(e.path().wstring())));
 							}
 						}

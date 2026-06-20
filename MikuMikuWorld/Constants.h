@@ -38,4 +38,5 @@ namespace MikuMikuWorld
 	constexpr const char* MMWS_EXTENSION = ".mmws";
 	constexpr const char* CC_MMWS_EXTENSION = ".ccmmws";
 	constexpr const char* UC_MMWS_EXTENSION = ".unchmmws";
+	constexpr const char* MCH_MMWS_EXTENSION = ".mchmmws";
 }

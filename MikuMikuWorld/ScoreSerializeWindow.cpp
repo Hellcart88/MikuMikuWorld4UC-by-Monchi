@@ -16,13 +16,17 @@ namespace MikuMikuWorld
 	static constexpr size_t FORMAT_COUNT = static_cast<size_t>(SerializeFormat::FormatCount);
 
 	static const std::array<std::string, FORMAT_COUNT> FORMAT_NAMES = {
-		IO::formatString("%s (%s)", IO::mmwsFilter.filterName.c_str(), UC_MMWS_EXTENSION),
+		IO::formatString("%s (%s)", IO::mchMmwsFilter.filterName.c_str(), MCH_MMWS_EXTENSION),
+		IO::formatString("%s (%s)", IO::ucMmwsFilter.filterName.c_str(), UC_MMWS_EXTENSION),
+		IO::formatString("%s (%s)", IO::mmwsFilter.filterName.c_str(), "*.mchmmws;*.unchmmws;*.ccmmws;*.mmws"),
 		IO::formatString("%s (%s)", IO::susFilter.filterName.c_str(), SUS_EXTENSION),
 		IO::formatString("%s (%s)", IO::uscFilter.filterName.c_str(), USC_EXTENSION),
 		IO::lvlDatFilter.filterName,
 	};
 
-	static constexpr std::array<size_t, 4> EXPORT_AVAILABILITY = { false, false, false, true };
+	static constexpr std::array<size_t, FORMAT_COUNT> EXPORT_AVAILABILITY = {
+		false, false, false, false, false, true
+	};
 
 	DefaultScoreSerializeController::DefaultScoreSerializeController(Score score)
 	{
@@ -44,6 +48,10 @@ namespace MikuMikuWorld
 	{
 		switch (format)
 		{
+		case SerializeFormat::MonchiNativeFormat:
+			return NativeScoreSerializer::canSerialize(score);
+		case SerializeFormat::UntitledChartsNativeFormat:
+			return NativeScoreSerializer::canSerialize(score);
 		case SerializeFormat::NativeFormat:
 			return NativeScoreSerializer::canSerialize(score);
 		case SerializeFormat::SusFormat:
@@ -62,6 +70,13 @@ namespace MikuMikuWorld
 		SerializeFormat format = toSerializeFormat(filename);
 		switch (format)
 		{
+		case SerializeFormat::MonchiNativeFormat:
+			serializer = std::make_unique<NativeScoreSerializer>(NativeScoreFormat::Monchi);
+			break;
+		case SerializeFormat::UntitledChartsNativeFormat:
+			serializer =
+			    std::make_unique<NativeScoreSerializer>(NativeScoreFormat::UntitledCharts);
+			break;
 		case SerializeFormat::NativeFormat:
 			serializer = std::make_unique<NativeScoreSerializer>();
 			break;
@@ -81,7 +96,9 @@ namespace MikuMikuWorld
 			return;
 		}
 
-		if (format == SerializeFormat::NativeFormat)
+		if (format == SerializeFormat::MonchiNativeFormat ||
+		    format == SerializeFormat::UntitledChartsNativeFormat ||
+		    format == SerializeFormat::NativeFormat)
 			scoreFilename = filename;
 	}
 
@@ -203,6 +220,8 @@ namespace MikuMikuWorld
 	{
 		switch (selectedFormat)
 		{
+		case SerializeFormat::MonchiNativeFormat:
+		case SerializeFormat::UntitledChartsNativeFormat:
 		case SerializeFormat::NativeFormat:
 			deserializer = std::make_unique<NativeScoreSerializer>();
 			break;
@@ -222,7 +241,9 @@ namespace MikuMikuWorld
 			return;
 		}
 
-		if (selectedFormat == SerializeFormat::NativeFormat)
+		if (selectedFormat == SerializeFormat::MonchiNativeFormat ||
+		    selectedFormat == SerializeFormat::UntitledChartsNativeFormat ||
+		    selectedFormat == SerializeFormat::NativeFormat)
 			this->scoreFilename = filename;
 	}
 

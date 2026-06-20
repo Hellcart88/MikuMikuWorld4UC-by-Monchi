@@ -13,7 +13,11 @@
 
 namespace IO
 {
-	FileDialogFilter mmwsFilter{ "MikuMikuWorld Score", "*.unchmmws;*.ccmmws;*.mmws" };
+	FileDialogFilter mmwsFilter{ "Any MikuMikuWorld Score", "*.mchmmws;*.unchmmws;*.ccmmws;*.mmws" };
+	FileDialogFilter mchMmwsFilter{ "Monchi MikuMikuWorld Score", "*.mchmmws" };
+	FileDialogFilter ucMmwsFilter{ "UntitledCharts MikuMikuWorld Score", "*.unchmmws" };
+	FileDialogFilter ccMmwsFilter{ "Chart Cyanvas MikuMikuWorld Score", "*.ccmmws" };
+	FileDialogFilter legacyMmwsFilter{ "MikuMikuWorld Score", "*.mmws" };
 	FileDialogFilter susFilter{ "Sliding Universal Score", "*.sus" };
 	FileDialogFilter uscFilter{ "Universal Sekai Chart", "*.usc" };
 	FileDialogFilter lvlDatFilter{ "Sonolus Level Data", "*.json.gz;*.json" };
@@ -328,6 +332,7 @@ namespace IO
 			if (GetSaveFileNameW(&ofn))
 			{
 				outputFilename = wideStringToMb(ofn.lpstrFile);
+				filterIndex = ofn.nFilterIndex ? ofn.nFilterIndex - 1 : 0;
 			}
 			else
 			{
@@ -338,6 +343,7 @@ namespace IO
 		else if (GetOpenFileNameW(&ofn))
 		{
 			outputFilename = wideStringToMb(ofn.lpstrFile);
+			filterIndex = ofn.nFilterIndex ? ofn.nFilterIndex - 1 : 0;
 		}
 		else
 		{
