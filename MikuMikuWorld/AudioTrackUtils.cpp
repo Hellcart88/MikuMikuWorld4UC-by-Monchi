@@ -402,7 +402,7 @@ namespace MikuMikuWorld::AudioTrackUtils
 		if (!stream.is_open())
 			return Result(ResultStatus::Error,
 			              IO::formatString("Failed to write temporary wav file: %s",
-			                               filename.u8string().c_str()));
+			                               IO::wideStringToMb(filename.wstring()).c_str()));
 
 		const uint16_t bitsPerSample = 16;
 		const uint16_t blockAlign = static_cast<uint16_t>(buffer.channelCount * bitsPerSample / 8);
@@ -427,13 +427,26 @@ namespace MikuMikuWorld::AudioTrackUtils
 		return Result::Ok();
 	}
 
-	std::string makeEditedAudioFilename(const std::string& sourceFile,
-	                                    const std::string& outputDirectory)
+	static std::string pathToUtf8(const fs::path& path)
 	{
-		const std::string sourceName =
-		    sourceFile.empty() ? "bgm" : IO::File::getFilenameWithoutExtension(sourceFile);
-		const std::string extension = sourceFile.empty() ? ".wav" : IO::File::getFileExtension(sourceFile);
-		return (fs::path(outputDirectory) / (sourceName + "_edited" + extension)).u8string();
+		return IO::wideStringToMb(path.wstring());
+	}
+
+	static fs::path makeEditedAudioPath(const std::string& sourceFile,
+	                                    const fs::path& outputDirectory)
+	{
+		std::wstring sourceName = L"bgm";
+		std::wstring extension = L".wav";
+		if (!sourceFile.empty())
+		{
+			const fs::path sourcePath(IO::mbToWideStr(sourceFile));
+			if (!sourcePath.stem().wstring().empty())
+				sourceName = sourcePath.stem().wstring();
+			if (!sourcePath.extension().wstring().empty())
+				extension = sourcePath.extension().wstring();
+		}
+
+		return outputDirectory / (sourceName + L"_edited" + extension);
 	}
 
 	Result exportEditedAudio(const Score& score, const std::string& fallbackSourceFile,
@@ -461,9 +474,10 @@ namespace MikuMikuWorld::AudioTrackUtils
 		if (ec)
 			return Result(ResultStatus::Error,
 			              IO::formatString("Failed to create output directory: %s",
-			                               outputDirectoryPath.u8string().c_str()));
+			                               pathToUtf8(outputDirectoryPath).c_str()));
 
-		outputFilename = makeEditedAudioFilename(sourceFile, outputDirectoryPath.u8string());
+		const fs::path outputPath = makeEditedAudioPath(sourceFile, outputDirectoryPath);
+		outputFilename = pathToUtf8(outputPath);
 		const fs::path tempWavPath = makeTemporaryWavPath();
 		Result wavResult = writeTempWav(rendered.buffer, tempWavPath);
 		if (!wavResult.isOk())
@@ -475,7 +489,7 @@ namespace MikuMikuWorld::AudioTrackUtils
 			              "ffmpeg.exe was not found. Place it next to the application or in tools.");
 
 		const std::string command = quoteArgument(ffmpeg) + " -y -hide_banner -loglevel error -i " +
-		                            quoteArgument(tempWavPath.u8string()) + " " +
+		                            quoteArgument(pathToUtf8(tempWavPath)) + " " +
 		                            quoteArgument(outputFilename);
 		Result ffmpegResult = runProcess(command);
 		std::error_code removeError;

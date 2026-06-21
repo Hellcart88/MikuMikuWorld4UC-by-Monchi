@@ -27,9 +27,6 @@ namespace MikuMikuWorld::AudioTrackUtils
 	                      RenderedAudio& output, bool ignoreEditorMute = false);
 	Result refreshPlaybackAudio(MikuMikuWorld::ScoreContext& context);
 	void syncMusicOffsetFromAudioTrack(MikuMikuWorld::ScoreContext& context);
-	Result writeTempWav(const Audio::SoundBuffer& buffer, const std::string& filename);
-	std::string makeEditedAudioFilename(const std::string& sourceFile,
-	                                    const std::string& outputDirectory);
 	Result exportEditedAudio(const Score& score, const std::string& fallbackSourceFile,
 	                         const std::string& outputDirectory, std::string& outputFilename);
 }

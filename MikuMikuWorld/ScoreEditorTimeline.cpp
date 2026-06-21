@@ -1432,22 +1432,6 @@ namespace MikuMikuWorld
 		drawLeftMetaEventClusters(context);
 		updateMetaEventDrag(context);
 
-		// Update song boundaries
-		if (context.audio.isMusicInitialized())
-		{
-			int startTick = accumulateTicks(context.workingData.musicOffset / 1000, TICKS_PER_BEAT,
-			                                context.score.tempoChanges);
-			int endTick = accumulateTicks(context.audio.getMusicEndTime(), TICKS_PER_BEAT,
-			                              context.score.tempoChanges);
-
-			float x = getTimelineEndX(context);
-			float y1 = position.y - tickToPosition(startTick) + visualOffset;
-			float y2 = position.y - tickToPosition(endTick) + visualOffset;
-
-			drawList->AddTriangleFilled({ x, y1 }, { x + 10, y1 }, { x + 10, y1 - 10 }, 0xFFCCCCCC);
-			drawList->AddTriangleFilled({ x, y2 }, { x + 10, y2 }, { x + 10, y2 + 10 }, 0xFFCCCCCC);
-		}
-
 		if (feverControl(context, context.score.fever))
 		{
 			eventEdit.editId = 0;
@@ -4538,6 +4522,11 @@ namespace MikuMikuWorld
 				const float dpiScale = ImGui::GetMainViewport()->DpiScale;
 				const float grabWidth = 14.0f * dpiScale;
 				const float knobRadius = 4.0f * dpiScale;
+				const float sourceEndMs =
+				    clip.sourceEndMs >= 0.0f
+				        ? clip.sourceEndMs
+				        : static_cast<float>(context.sourceWaveformL.durationInSeconds * 1000.0);
+				const float durationMs = std::max(1.0f, sourceEndMs - clip.sourceStartMs);
 				const ImU32 handleColor =
 				    context.score.audioTrack.locked || clip.locked ? IM_COL32(180, 180, 180, 120)
 				                                                   : IM_COL32(225, 240, 255, 180);
@@ -4546,12 +4535,13 @@ namespace MikuMikuWorld
 				                                 : IM_COL32(130, 190, 230, 55),
 				                        4.0f, ImDrawFlags_RoundCornersLeft);
 
-				const float fadeInPixels =
-				    static_cast<float>((clip.fadeInMs / 1000.0f / waveformSecondsPerPixel) * zoom);
-				const float fadeOutPixels =
-				    static_cast<float>((clip.fadeOutMs / 1000.0f / waveformSecondsPerPixel) * zoom);
-				const float fadeInY = rect.Max.y - std::min(rect.GetHeight(), fadeInPixels);
-				const float fadeOutY = rect.Min.y + std::min(rect.GetHeight(), fadeOutPixels);
+				const float fadeInY =
+				    std::clamp(getScreenYFromTimelineMs(context, clip.timelineStartMs + clip.fadeInMs),
+				               rect.Min.y, rect.Max.y);
+				const float fadeOutY = std::clamp(
+				    getScreenYFromTimelineMs(context,
+				                             clip.timelineStartMs + durationMs - clip.fadeOutMs),
+				    rect.Min.y, rect.Max.y);
 				const ImVec2 fadeInHandle(rect.Min.x + (14.0f * dpiScale), fadeInY);
 				const ImVec2 fadeOutHandle(rect.Max.x - (14.0f * dpiScale), fadeOutY);
 				drawList->AddLine(ImVec2(rect.Min.x, fadeInY), ImVec2(rect.Max.x, fadeInY),
@@ -4610,7 +4600,7 @@ namespace MikuMikuWorld
 		if (ImGui::BeginPopup("audio_clip_context"))
 		{
 			AudioClip* menuClip = findClip(audioContextMenuClip);
-			bool canCut = menuClip && hasAudioRangeSelection(audioContextMenuClip);
+			bool canCut = menuClip && audioContextMenuHasRange;
 			bool canSplit = false;
 			if (menuClip)
 			{
@@ -4619,10 +4609,12 @@ namespace MikuMikuWorld
 				        ? menuClip->sourceEndMs
 				        : static_cast<float>(context.sourceWaveformL.durationInSeconds * 1000.0);
 				const float durationMs = std::max(1.0f, sourceEndMs - menuClip->sourceStartMs);
-				if (hasAudioRangeSelection(audioContextMenuClip))
+				if (audioContextMenuHasRange)
 				{
-					const float rangeStartMs = std::min(audioRangeStartMs, audioRangeEndMs);
-					const float rangeEndMs = std::max(audioRangeStartMs, audioRangeEndMs);
+					const float rangeStartMs =
+					    std::min(audioContextMenuRangeStartMs, audioContextMenuRangeEndMs);
+					const float rangeEndMs =
+					    std::max(audioContextMenuRangeStartMs, audioContextMenuRangeEndMs);
 					canSplit = rangeStartMs > menuClip->timelineStartMs + 1.0f ||
 					           rangeEndMs < menuClip->timelineStartMs + durationMs - 1.0f;
 				}
@@ -4635,20 +4627,23 @@ namespace MikuMikuWorld
 
 			if (ImGui::MenuItem(getString("cut"), nullptr, false, canCut))
 			{
-				cutAudioClipRange(context, audioContextMenuClip, audioRangeStartMs,
-				                  audioRangeEndMs);
+				cutAudioClipRange(context, audioContextMenuClip,
+				                  audioContextMenuRangeStartMs, audioContextMenuRangeEndMs);
+				audioContextMenuHasRange = false;
 			}
 			if (ImGui::MenuItem(getString("audio_clip_split"), nullptr, false, canSplit))
 			{
-				if (hasAudioRangeSelection(audioContextMenuClip))
+				if (audioContextMenuHasRange)
 				{
-					splitAudioClipRange(context, audioContextMenuClip, audioRangeStartMs,
-					                    audioRangeEndMs);
+					splitAudioClipRange(context, audioContextMenuClip,
+					                    audioContextMenuRangeStartMs,
+					                    audioContextMenuRangeEndMs);
 				}
 				else
 				{
 					splitAudioClipAt(context, audioContextMenuClip, playheadTimelineMs);
 				}
+				audioContextMenuHasRange = false;
 			}
 			ImGui::EndPopup();
 		}
@@ -4697,14 +4692,16 @@ namespace MikuMikuWorld
 				        ? clip.sourceEndMs
 				        : static_cast<float>(context.sourceWaveformL.durationInSeconds * 1000.0);
 				const float clipDurationMs = std::max(1.0f, sourceEndMs - clip.sourceStartMs);
-				const float fadeInPixels = static_cast<float>(
-				    (clip.fadeInMs / 1000.0f / waveformSecondsPerPixel) * zoom);
-				const float fadeOutPixels = static_cast<float>(
-				    (clip.fadeOutMs / 1000.0f / waveformSecondsPerPixel) * zoom);
 				const ImVec2 fadeInHandle(rect.Min.x + (14.0f * dpiScale),
-				                          rect.Max.y - std::min(rect.GetHeight(), fadeInPixels));
+				                          std::clamp(getScreenYFromTimelineMs(
+				                                         context, clip.timelineStartMs + clip.fadeInMs),
+				                                     rect.Min.y, rect.Max.y));
 				const ImVec2 fadeOutHandle(rect.Max.x - (14.0f * dpiScale),
-				                           rect.Min.y + std::min(rect.GetHeight(), fadeOutPixels));
+				                           std::clamp(
+				                               getScreenYFromTimelineMs(
+				                                   context, clip.timelineStartMs + clipDurationMs -
+				                                                clip.fadeOutMs),
+				                               rect.Min.y, rect.Max.y));
 				const ImRect fadeInHandleRect(
 				    ImVec2(fadeInHandle.x - 8.0f * dpiScale, fadeInHandle.y - 8.0f * dpiScale),
 				    ImVec2(fadeInHandle.x + 8.0f * dpiScale, fadeInHandle.y + 8.0f * dpiScale));
@@ -4735,6 +4732,9 @@ namespace MikuMikuWorld
 					context.audioLayerSelected = true;
 					context.selectedAudioClip = clip.ID;
 					audioContextMenuClip = clip.ID;
+					audioContextMenuHasRange = hasAudioRangeSelection(clip.ID);
+					audioContextMenuRangeStartMs = audioRangeStartMs;
+					audioContextMenuRangeEndMs = audioRangeEndMs;
 					suppressTimelineContextMenu = true;
 					ImGui::OpenPopup("audio_clip_context");
 					break;
@@ -4876,8 +4876,15 @@ namespace MikuMikuWorld
 				const float durationMs =
 				    std::max(1.0f, (clip->sourceEndMs >= 0.0f ? clip->sourceEndMs : sourceLengthMs) -
 				                         clip->sourceStartMs);
-				clip->fadeInMs =
-				    std::clamp(audioDragStartClip.fadeInMs + deltaMs, 0.0f, durationMs);
+				float fadeInMs = audioDragStartClip.fadeInMs + deltaMs;
+				if (useSnap && snapMode != SnapMode::Relative)
+				{
+					const float snappedBoundary =
+					    snapTimelineMs(context, audioDragStartClip.timelineStartMs + fadeInMs,
+					                   true);
+					fadeInMs = snappedBoundary - audioDragStartClip.timelineStartMs;
+				}
+				clip->fadeInMs = std::clamp(fadeInMs, 0.0f, durationMs);
 				break;
 			}
 			case AudioDragMode::FadeOut:
@@ -4885,8 +4892,15 @@ namespace MikuMikuWorld
 				const float durationMs =
 				    std::max(1.0f, (clip->sourceEndMs >= 0.0f ? clip->sourceEndMs : sourceLengthMs) -
 				                         clip->sourceStartMs);
-				clip->fadeOutMs =
-				    std::clamp(audioDragStartClip.fadeOutMs - deltaMs, 0.0f, durationMs);
+				float fadeOutMs = audioDragStartClip.fadeOutMs - deltaMs;
+				if (useSnap && snapMode != SnapMode::Relative)
+				{
+					const float snappedBoundary = snapTimelineMs(
+					    context, audioDragStartClip.timelineStartMs + durationMs - fadeOutMs,
+					    true);
+					fadeOutMs = audioDragStartClip.timelineStartMs + durationMs - snappedBoundary;
+				}
+				clip->fadeOutMs = std::clamp(fadeOutMs, 0.0f, durationMs);
 				break;
 			}
 			default:

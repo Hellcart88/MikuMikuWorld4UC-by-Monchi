@@ -138,6 +138,9 @@ namespace MikuMikuWorld
 		float audioRangeStartMs{};
 		float audioRangeEndMs{};
 		id_t audioContextMenuClip{ static_cast<id_t>(-1) };
+		bool audioContextMenuHasRange{ false };
+		float audioContextMenuRangeStartMs{};
+		float audioContextMenuRangeEndMs{};
 		bool suppressTimelineContextMenu{ false };
 
 		float time{};
