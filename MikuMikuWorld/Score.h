@@ -103,6 +103,7 @@ namespace MikuMikuWorld
 	struct AudioTrack
 	{
 		std::string name = "BGM";
+		bool explicitEditorTrack = false;
 		bool muted = false;
 		bool locked = false;
 		bool visible = true;

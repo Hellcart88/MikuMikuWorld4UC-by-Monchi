@@ -4,6 +4,11 @@
 #include "Utilities.h"
 #include <string>
 
+namespace MikuMikuWorld
+{
+	struct ScoreContext;
+}
+
 namespace MikuMikuWorld::AudioTrackUtils
 {
 	struct RenderedAudio
@@ -16,9 +21,12 @@ namespace MikuMikuWorld::AudioTrackUtils
 	                             float timelineStartMs, float sourceLengthMs);
 	bool hasAudioTrackData(const Score& score);
 	bool hasAudioTrackEdits(const Score& score);
-	float getRenderedTimelineStartMs(const Score& score, float fallbackMusicOffsetMs);
+	float getRenderedTimelineStartMs(const Score& score, float fallbackMusicOffsetMs,
+	                                 bool ignoreEditorMute = false);
 	Result renderToBuffer(const Score& score, const std::string& fallbackSourceFile,
-	                      RenderedAudio& output);
+	                      RenderedAudio& output, bool ignoreEditorMute = false);
+	Result refreshPlaybackAudio(MikuMikuWorld::ScoreContext& context);
+	void syncMusicOffsetFromAudioTrack(MikuMikuWorld::ScoreContext& context);
 	Result writeTempWav(const Audio::SoundBuffer& buffer, const std::string& filename);
 	std::string makeEditedAudioFilename(const std::string& sourceFile,
 	                                    const std::string& outputDirectory);

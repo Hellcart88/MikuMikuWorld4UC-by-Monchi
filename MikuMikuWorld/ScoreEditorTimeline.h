@@ -209,8 +209,11 @@ namespace MikuMikuWorld
 
 		void drawWaveform(ScoreContext& context);
 		void drawAudioTrack(ScoreContext& context);
+		void drawAudioClipWaveform(ScoreContext& context, const AudioClip& clip, const ImRect& rect,
+		                           ImU32 leftColor, ImU32 rightColor);
 		void updateAudioTrackEditing(ScoreContext& context);
 		ImRect getAudioClipRect(ScoreContext& context, const AudioClip& clip) const;
+		float getMouseTimelineMs(const ScoreContext& context, bool snap) const;
 		void drawHiSpeedGraph(ScoreContext& context);
 
 		void drawHoldCurve(const Note& n1, const Note& n2, EaseType ease, bool isGuide,

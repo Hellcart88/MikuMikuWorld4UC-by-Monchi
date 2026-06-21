@@ -82,19 +82,24 @@ namespace MikuMikuWorld
 			{
 				const float oldOffset = context.workingData.musicOffset;
 				context.workingData.musicOffset = offset;
-				if (context.score.audioTrack.clips.size() == 1)
+				context.score.metadata.musicOffset = offset;
+				if (!context.score.audioTrack.clips.empty())
 				{
-					AudioClip& clip = context.score.audioTrack.clips.front();
-					const bool defaultClip =
-					    std::abs(clip.timelineStartMs - oldOffset) <= 0.01f &&
-					    clip.sourceStartMs <= 0.01f && clip.sourceEndMs < 0.0f &&
-					    clip.fadeInMs <= 0.01f && clip.fadeOutMs <= 0.01f &&
-					    std::abs(clip.gain - 1.0f) <= 0.001f && !clip.muted && !clip.locked &&
-					    clip.visible;
-					if (defaultClip)
-						clip.timelineStartMs = offset;
+					if (context.score.audioTrack.clips.size() == 1)
+					{
+						context.score.audioTrack.clips.front().timelineStartMs = offset;
+					}
+					else
+					{
+						const float delta = offset - oldOffset;
+						for (AudioClip& clip : context.score.audioTrack.clips)
+							clip.timelineStartMs += delta;
+					}
 				}
-				context.audio.setMusicOffset(context.getTimeAtCurrentTick(), offset);
+				Result refreshResult = AudioTrackUtils::refreshPlaybackAudio(context);
+				if (!refreshResult.isOk())
+					IO::messageBox(APP_NAME, refreshResult.getMessage(), IO::MessageBoxButtons::Ok,
+					               IO::MessageBoxIcon::Warning);
 			}
 
 			// volume controls
@@ -2411,6 +2416,10 @@ namespace MikuMikuWorld
 				Score prev = context.score;
 				context.score.audioTrack.muted = !context.score.audioTrack.muted;
 				context.pushHistory("Toggle Audio Layer Mute", prev, context.score);
+				Result refreshResult = AudioTrackUtils::refreshPlaybackAudio(context);
+				if (!refreshResult.isOk())
+					IO::messageBox(APP_NAME, refreshResult.getMessage(), IO::MessageBoxButtons::Ok,
+					               IO::MessageBoxIcon::Warning);
 			}
 
 			ImGui::PopStyleColor();

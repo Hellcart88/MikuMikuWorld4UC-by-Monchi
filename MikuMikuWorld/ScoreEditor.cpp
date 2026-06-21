@@ -628,7 +628,7 @@ namespace MikuMikuWorld
 		if (result.isOk() || filename.empty())
 		{
 			if (changingSource)
-				context.score.audioTrack.clips.clear();
+				context.score.audioTrack = AudioTrack{};
 			context.workingData.musicFilename = filename;
 		}
 		else
@@ -653,31 +653,10 @@ namespace MikuMikuWorld
 		AudioTrackUtils::ensureDefaultAudioTrack(context.score, filename,
 		                                         context.workingData.musicOffset, sourceLengthMs);
 
-		if (context.audio.musicBuffer.isValid() && AudioTrackUtils::hasAudioTrackEdits(context.score))
-		{
-			AudioTrackUtils::RenderedAudio rendered;
-			Result renderResult =
-			    AudioTrackUtils::renderToBuffer(context.score, context.workingData.musicFilename, rendered);
-			if (renderResult.isOk())
-			{
-				int16_t* samples = rendered.buffer.samples.release();
-				const std::string name = rendered.buffer.name;
-				const ma_uint32 sampleRate = rendered.buffer.sampleRate;
-				const ma_uint32 channelCount = rendered.buffer.channelCount;
-				const ma_uint64 frameCount = rendered.buffer.frameCount;
-				rendered.buffer.dispose();
-				context.audio.loadMusicFromSamples(name, sampleRate, channelCount, frameCount, samples);
-				context.audio.setMusicOffset(0.0f, rendered.timelineStartMs);
-			}
-			else
-			{
-				IO::messageBox(APP_NAME, renderResult.getMessage(), IO::MessageBoxButtons::Ok,
-				               IO::MessageBoxIcon::Warning);
-			}
-		}
-
-		context.waveformL.generateMipChainsFromSampleBuffer(context.audio.musicBuffer, 0);
-		context.waveformR.generateMipChainsFromSampleBuffer(context.audio.musicBuffer, 1);
+		Result refreshResult = AudioTrackUtils::refreshPlaybackAudio(context);
+		if (!refreshResult.isOk())
+			IO::messageBox(APP_NAME, refreshResult.getMessage(), IO::MessageBoxButtons::Ok,
+			               IO::MessageBoxIcon::Warning);
 		timeline.setPlaying(context, false);
 	}
 

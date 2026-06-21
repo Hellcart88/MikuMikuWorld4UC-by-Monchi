@@ -78,7 +78,8 @@ namespace MikuMikuWorld
 	{
 		AUDIO_TRACK_MUTED = 1 << 0,
 		AUDIO_TRACK_LOCKED = 1 << 1,
-		AUDIO_TRACK_VISIBLE = 1 << 2
+		AUDIO_TRACK_VISIBLE = 1 << 2,
+		AUDIO_TRACK_EXPLICIT = 1 << 3
 	};
 
 	enum AudioClipFlags
@@ -196,6 +197,8 @@ namespace MikuMikuWorld
 				flags |= AUDIO_TRACK_LOCKED;
 			if (track.visible)
 				flags |= AUDIO_TRACK_VISIBLE;
+			if (track.explicitEditorTrack)
+				flags |= AUDIO_TRACK_EXPLICIT;
 			return flags;
 		}
 
@@ -204,6 +207,7 @@ namespace MikuMikuWorld
 			track.muted = (flags & AUDIO_TRACK_MUTED) != 0;
 			track.locked = (flags & AUDIO_TRACK_LOCKED) != 0;
 			track.visible = (flags & AUDIO_TRACK_VISIBLE) != 0;
+			track.explicitEditorTrack = (flags & AUDIO_TRACK_EXPLICIT) != 0;
 		}
 
 		unsigned int toAudioClipFlags(const AudioClip& clip)
@@ -1155,6 +1159,8 @@ namespace MikuMikuWorld
 			return true;
 
 		if (score.audioTrack.muted || score.audioTrack.locked || !score.audioTrack.visible)
+			return true;
+		if (score.audioTrack.explicitEditorTrack && score.audioTrack.clips.empty())
 			return true;
 		if (score.audioTrack.clips.size() > 1)
 			return true;

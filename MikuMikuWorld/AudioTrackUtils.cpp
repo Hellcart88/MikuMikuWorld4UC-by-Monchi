@@ -2,6 +2,7 @@
 #include "Application.h"
 #include "File.h"
 #include "IO.h"
+#include "ScoreContext.h"
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
@@ -107,6 +108,8 @@ namespace MikuMikuWorld::AudioTrackUtils
 	void ensureDefaultAudioTrack(Score& score, const std::string& sourceFile, float timelineStartMs,
 	                             float sourceLengthMs)
 	{
+		if (score.audioTrack.explicitEditorTrack)
+			return;
 		if (!score.audioTrack.clips.empty())
 			return;
 
@@ -121,12 +124,12 @@ namespace MikuMikuWorld::AudioTrackUtils
 
 	bool hasAudioTrackData(const Score& score)
 	{
-		return !score.audioTrack.clips.empty();
+		return score.audioTrack.explicitEditorTrack || !score.audioTrack.clips.empty();
 	}
 
 	bool hasAudioTrackEdits(const Score& score)
 	{
-		if (score.audioTrack.muted || score.audioTrack.locked || !score.audioTrack.visible)
+		if (score.audioTrack.explicitEditorTrack && score.audioTrack.clips.empty())
 			return true;
 		if (score.audioTrack.clips.size() != 1)
 			return !score.audioTrack.clips.empty();
@@ -134,7 +137,7 @@ namespace MikuMikuWorld::AudioTrackUtils
 			return false;
 
 		const AudioClip& clip = score.audioTrack.clips.front();
-		if (clip.muted || clip.locked || !clip.visible)
+		if (clip.muted)
 			return true;
 		if (std::abs(clip.timelineStartMs - score.metadata.musicOffset) > 0.01f)
 			return true;
@@ -147,12 +150,13 @@ namespace MikuMikuWorld::AudioTrackUtils
 		return clip.sourceEndMs >= 0.0f;
 	}
 
-	float getRenderedTimelineStartMs(const Score& score, float fallbackMusicOffsetMs)
+	float getRenderedTimelineStartMs(const Score& score, float fallbackMusicOffsetMs,
+	                                 bool ignoreEditorMute)
 	{
 		float startMs = std::numeric_limits<float>::max();
 		for (const AudioClip& clip : score.audioTrack.clips)
 		{
-			if (clip.muted || score.audioTrack.muted)
+			if (clip.muted || (!ignoreEditorMute && score.audioTrack.muted))
 				continue;
 			startMs = std::min(startMs, clip.timelineStartMs);
 		}
@@ -160,10 +164,21 @@ namespace MikuMikuWorld::AudioTrackUtils
 	}
 
 	Result renderToBuffer(const Score& score, const std::string& fallbackSourceFile,
-	                      RenderedAudio& output)
+	                      RenderedAudio& output, bool ignoreEditorMute)
 	{
 		if (score.audioTrack.clips.empty())
-			return Result(ResultStatus::Error, "No audio clips to render");
+		{
+			if (!score.audioTrack.explicitEditorTrack)
+				return Result(ResultStatus::Error, "No audio clips to render");
+
+			const ma_uint32 sampleRate = 44100;
+			const ma_uint32 channelCount = 2;
+			const ma_uint64 frameCount = 1;
+			int16_t* samples = new int16_t[channelCount * frameCount]{};
+			output.buffer.initialize("silence", sampleRate, channelCount, frameCount, samples);
+			output.timelineStartMs = score.metadata.musicOffset;
+			return Result::Ok();
+		}
 
 		struct DecodedClip
 		{
@@ -180,7 +195,7 @@ namespace MikuMikuWorld::AudioTrackUtils
 
 		for (const AudioClip& clip : score.audioTrack.clips)
 		{
-			if (score.audioTrack.muted || clip.muted || !clip.visible)
+			if ((!ignoreEditorMute && score.audioTrack.muted) || clip.muted)
 				continue;
 
 			const std::string sourceFile = resolveSourceFile(clip, fallbackSourceFile);
@@ -273,6 +288,88 @@ namespace MikuMikuWorld::AudioTrackUtils
 		return Result::Ok();
 	}
 
+	static Result loadSilence(ScoreContext& context, float timelineStartMs)
+	{
+		const ma_uint32 sampleRate = 44100;
+		const ma_uint32 channelCount = 2;
+		const ma_uint64 frameCount = 1;
+		int16_t* samples = new int16_t[channelCount * frameCount]{};
+		Result result =
+		    context.audio.loadMusicFromSamples("silence", sampleRate, channelCount, frameCount, samples);
+		if (!result.isOk())
+			return result;
+		context.audio.setMusicOffset(0.0f, timelineStartMs);
+		context.waveformL.generateMipChainsFromSampleBuffer(context.audio.musicBuffer, 0);
+		context.waveformR.generateMipChainsFromSampleBuffer(context.audio.musicBuffer, 1);
+		return Result::Ok();
+	}
+
+	Result refreshPlaybackAudio(ScoreContext& context)
+	{
+		if (hasAudioTrackData(context.score))
+		{
+			if (context.score.audioTrack.muted || context.score.audioTrack.clips.empty())
+				return loadSilence(context, context.workingData.musicOffset);
+
+			if (hasAudioTrackEdits(context.score))
+			{
+				RenderedAudio rendered;
+				Result renderResult =
+				    renderToBuffer(context.score, context.workingData.musicFilename, rendered);
+				if (!renderResult.isOk())
+					return loadSilence(context, context.workingData.musicOffset);
+
+				int16_t* samples = rendered.buffer.samples.release();
+				const std::string name = rendered.buffer.name;
+				const ma_uint32 sampleRate = rendered.buffer.sampleRate;
+				const ma_uint32 channelCount = rendered.buffer.channelCount;
+				const ma_uint64 frameCount = rendered.buffer.frameCount;
+				rendered.buffer.dispose();
+
+				Result loadResult =
+				    context.audio.loadMusicFromSamples(name, sampleRate, channelCount, frameCount, samples);
+				if (!loadResult.isOk())
+					return loadResult;
+
+				context.audio.setMusicOffset(0.0f, rendered.timelineStartMs);
+				context.waveformL.generateMipChainsFromSampleBuffer(context.audio.musicBuffer, 0);
+				context.waveformR.generateMipChainsFromSampleBuffer(context.audio.musicBuffer, 1);
+				return Result::Ok();
+			}
+		}
+
+		if (context.workingData.musicFilename.empty())
+		{
+			context.audio.disposeMusic();
+			context.waveformL.clear();
+			context.waveformR.clear();
+			return Result::Ok();
+		}
+
+		Result result = context.audio.loadMusic(context.workingData.musicFilename);
+		if (!result.isOk())
+			return result;
+		context.audio.setMusicOffset(0.0f, context.workingData.musicOffset);
+		context.waveformL.generateMipChainsFromSampleBuffer(context.audio.musicBuffer, 0);
+		context.waveformR.generateMipChainsFromSampleBuffer(context.audio.musicBuffer, 1);
+		return Result::Ok();
+	}
+
+	void syncMusicOffsetFromAudioTrack(ScoreContext& context)
+	{
+		if (context.score.audioTrack.clips.empty())
+			return;
+
+		float startMs = std::numeric_limits<float>::max();
+		for (const AudioClip& clip : context.score.audioTrack.clips)
+			startMs = std::min(startMs, clip.timelineStartMs);
+		if (startMs == std::numeric_limits<float>::max())
+			return;
+
+		context.workingData.musicOffset = startMs;
+		context.score.metadata.musicOffset = startMs;
+	}
+
 	Result writeTempWav(const Audio::SoundBuffer& buffer, const std::string& filename)
 	{
 		if (!buffer.isValid())
@@ -318,7 +415,7 @@ namespace MikuMikuWorld::AudioTrackUtils
 	                         const std::string& outputDirectory, std::string& outputFilename)
 	{
 		RenderedAudio rendered;
-		Result renderResult = renderToBuffer(score, fallbackSourceFile, rendered);
+		Result renderResult = renderToBuffer(score, fallbackSourceFile, rendered, true);
 		if (!renderResult.isOk())
 			return renderResult;
 

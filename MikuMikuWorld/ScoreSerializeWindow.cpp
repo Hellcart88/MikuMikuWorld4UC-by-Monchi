@@ -397,9 +397,6 @@ namespace MikuMikuWorld
 			    EditorScoreData(context.score.metadata, controller->getScoreFilename());
 
 			editor.loadMusic(context.workingData.musicFilename);
-			context.audio.setMusicOffset(
-			    0, AudioTrackUtils::getRenderedTimelineStartMs(context.score,
-			                                                   context.workingData.musicOffset));
 
 			context.scoreStats.calculateStats(context.score);
 			timeline.calculateMaxOffsetFromScore(context.score);
