@@ -138,6 +138,7 @@ shrink_up,Co lên
 compress_selection,Nén lựa chọn
 connect_holds,Nối Holds
 split_hold,Tách Hold
+audio_clip_split,Split Clip
 repeat_hold_mids,Lặp Hold Mids
 hold_to_traces,Chuyển Hold thành Trace
 add_traces_for_hold,Thêm Trace vào Hold

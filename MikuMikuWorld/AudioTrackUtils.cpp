@@ -370,14 +370,39 @@ namespace MikuMikuWorld::AudioTrackUtils
 		context.score.metadata.musicOffset = startMs;
 	}
 
-	Result writeTempWav(const Audio::SoundBuffer& buffer, const std::string& filename)
+	static fs::path makeTemporaryWavPath()
+	{
+		wchar_t tempDirectory[MAX_PATH]{};
+		if (GetTempPathW(MAX_PATH, tempDirectory) == 0)
+		{
+			std::error_code ec;
+			fs::path fallback = fs::temp_directory_path(ec);
+			if (!ec)
+				return fallback / "__mmw4uc_audio_edit_temp.wav";
+			return fs::path("__mmw4uc_audio_edit_temp.wav");
+		}
+
+		wchar_t tempFilename[MAX_PATH]{};
+		if (GetTempFileNameW(tempDirectory, L"mmw", 0, tempFilename) == 0)
+			return fs::path(tempDirectory) / "__mmw4uc_audio_edit_temp.wav";
+
+		fs::path path(tempFilename);
+		std::error_code ec;
+		fs::remove(path, ec);
+		path.replace_extension(L".wav");
+		return path;
+	}
+
+	Result writeTempWav(const Audio::SoundBuffer& buffer, const fs::path& filename)
 	{
 		if (!buffer.isValid())
 			return Result(ResultStatus::Error, "Invalid audio buffer");
 
-		std::ofstream stream(IO::mbToWideStr(filename), std::ios::binary);
+		std::ofstream stream(filename, std::ios::binary);
 		if (!stream.is_open())
-			return Result(ResultStatus::Error, "Failed to write temporary wav file");
+			return Result(ResultStatus::Error,
+			              IO::formatString("Failed to write temporary wav file: %s",
+			                               filename.u8string().c_str()));
 
 		const uint16_t bitsPerSample = 16;
 		const uint16_t blockAlign = static_cast<uint16_t>(buffer.channelCount * bitsPerSample / 8);
@@ -429,9 +454,18 @@ namespace MikuMikuWorld::AudioTrackUtils
 			}
 		}
 
-		outputFilename = makeEditedAudioFilename(sourceFile, outputDirectory);
-		const fs::path tempWavPath = fs::path(outputDirectory) / "__mmw4uc_audio_edit_temp.wav";
-		Result wavResult = writeTempWav(rendered.buffer, tempWavPath.u8string());
+		const fs::path outputDirectoryPath =
+		    outputDirectory.empty() ? fs::current_path() : fs::path(IO::mbToWideStr(outputDirectory));
+		std::error_code ec;
+		fs::create_directories(outputDirectoryPath, ec);
+		if (ec)
+			return Result(ResultStatus::Error,
+			              IO::formatString("Failed to create output directory: %s",
+			                               outputDirectoryPath.u8string().c_str()));
+
+		outputFilename = makeEditedAudioFilename(sourceFile, outputDirectoryPath.u8string());
+		const fs::path tempWavPath = makeTemporaryWavPath();
+		Result wavResult = writeTempWav(rendered.buffer, tempWavPath);
 		if (!wavResult.isOk())
 			return wavResult;
 
@@ -444,8 +478,8 @@ namespace MikuMikuWorld::AudioTrackUtils
 		                            quoteArgument(tempWavPath.u8string()) + " " +
 		                            quoteArgument(outputFilename);
 		Result ffmpegResult = runProcess(command);
-		std::error_code ec;
-		fs::remove(tempWavPath, ec);
+		std::error_code removeError;
+		fs::remove(tempWavPath, removeError);
 		return ffmpegResult;
 	}
 }

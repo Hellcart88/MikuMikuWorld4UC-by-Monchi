@@ -140,6 +140,7 @@ shrink_up, Contraer arriba
 compress_selection, Comprimir seleccionadas
 connect_holds, Conectar holds
 split_hold, Separar holds
+audio_clip_split, Split Clip
 repeat_hold_mids, Repetir hold-mids
 #- hold_to_traces,
 #- add_traces_for_hold,

@@ -140,6 +140,7 @@ shrink_up, Увеличить
 #- compress_selection,
 connect_holds, Соединить холды
 split_hold, Разделить холды
+audio_clip_split, Split Clip
 repeat_hold_mids, Повторить Тик Холдов
 #- hold_to_traces,
 #- add_traces_for_hold,

@@ -141,6 +141,7 @@ shrink_up,Shrink Up
 compress_selection,Compress Selection
 connect_holds,Connect Holds
 split_hold,Split Hold
+audio_clip_split,Split Clip
 repeat_hold_mids,Repeat Hold Mids
 hold_to_traces,Convert Hold to Traces
 add_traces_for_hold,Add Traces for Hold

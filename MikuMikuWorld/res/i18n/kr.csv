@@ -138,6 +138,7 @@ shrink_up,움츠러들다
 #- compress_selection,
 connect_holds,연결하다
 split_hold,분할 파악
+audio_clip_split,Split Clip
 repeat_hold_mids,중간 홀드 반복
 #- hold_to_traces,
 #- add_traces_for_hold,

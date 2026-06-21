@@ -875,6 +875,18 @@ namespace MikuMikuWorld
 
 	void ScoreEditorTimeline::contextMenu(ScoreContext& context)
 	{
+		if (suppressTimelineContextMenu || ImGui::IsPopupOpen("audio_clip_context"))
+			return;
+
+		if (context.audioLayerSelected)
+		{
+			for (const AudioClip& clip : context.score.audioTrack.clips)
+			{
+				if (clip.visible && getAudioClipRect(context, clip).Contains(ImGui::GetIO().MousePos))
+					return;
+			}
+		}
+
 		if (ImGui::BeginPopupContextWindow(IMGUI_TITLE(ICON_FA_MUSIC, "notes_timeline")))
 		{
 			if (ImGui::MenuItem(getString("delete"), ToShortcutString(config.input.deleteSelection),
@@ -1121,7 +1133,8 @@ namespace MikuMikuWorld
 				          (io.KeyShift ? config.scrollSpeedShift : config.scrollSpeedNormal);
 			}
 
-			if (!isHoveringNote && !isHoldingNote && !isHoldingMetaEvent && !insertingHold && !pasting &&
+			if (!context.audioLayerSelected && !isHoveringNote && !isHoldingNote &&
+			    !isHoldingMetaEvent && !insertingHold && !pasting &&
 			    currentMode == TimelineMode::Select)
 			{
 				// Clicked inside timeline, the current mouse position is the first drag point
@@ -1149,7 +1162,7 @@ namespace MikuMikuWorld
 
 		// Selection rectangle
 		// Draw selection rectangle after notes are rendered
-		if (dragging && ImGui::IsMouseReleased(0) && !pasting)
+		if (dragging && ImGui::IsMouseReleased(0) && !pasting && !context.audioLayerSelected)
 		{
 			// Calculate drag selection
 			float left = std::min(dragStart.x, mousePos.x);
@@ -1227,6 +1240,10 @@ namespace MikuMikuWorld
 					context.selectedMetaEvents.insert(event);
 			}
 
+			dragging = false;
+		}
+		else if (dragging && ImGui::IsMouseReleased(0) && context.audioLayerSelected)
+		{
 			dragging = false;
 		}
 
@@ -1470,7 +1487,7 @@ namespace MikuMikuWorld
 			drawList->AddRect(p1, p2, 0xcccccccc, 2.0f, ImDrawFlags_RoundCornersAll, 2.0f);
 		}
 
-		if (dragging && !pasting)
+		if (dragging && !pasting && !context.audioLayerSelected)
 		{
 			float startX = std::min(position.x + dragStart.x, position.x + mousePos.x);
 			float endX = std::max(position.x + dragStart.x, position.x + mousePos.x);
@@ -3771,7 +3788,7 @@ namespace MikuMikuWorld
 		focusCursor(context, Direction::Up);
 	}
 
-	int ScoreEditorTimeline::roundTickDown(int tick, int division)
+	int ScoreEditorTimeline::roundTickDown(int tick, int division) const
 	{
 		return std::max(tick - (tick % (TICKS_PER_BEAT / (division / 4))), 0);
 	}
@@ -4132,6 +4149,7 @@ namespace MikuMikuWorld
 
 	ImRect ScoreEditorTimeline::getAudioClipRect(ScoreContext& context, const AudioClip& clip) const
 	{
+		const float dpiScale = ImGui::GetMainViewport()->DpiScale;
 		const float sourceEndMs =
 		    clip.sourceEndMs >= 0.0f
 		        ? clip.sourceEndMs
@@ -4143,22 +4161,22 @@ namespace MikuMikuWorld
 		                                    TICKS_PER_BEAT, context.score.tempoChanges);
 		const float y1 = position.y - tickToPosition(startTick) + visualOffset;
 		const float y2 = position.y - tickToPosition(endTick) + visualOffset;
-		const float x1 = getTimelineStartX(context) + 8.0f;
-		const float x2 = getTimelineEndX(context) - 8.0f;
+		const float minX = getTimelineStartX(context) + (8.0f * dpiScale);
+		const float maxX = getTimelineEndX(context) - (8.0f * dpiScale);
+		const float availableWidth = std::max(1.0f, maxX - minX);
+		const float clipWidth = std::min(260.0f * dpiScale, availableWidth);
+		const float centerX = midpoint(getTimelineStartX(context), getTimelineEndX(context));
+		const float x1 = std::clamp(centerX - (clipWidth * 0.5f), minX, maxX - clipWidth);
+		const float x2 = x1 + clipWidth;
 		return ImRect(ImVec2(x1, std::min(y1, y2)), ImVec2(x2, std::max(y1, y2)));
 	}
 
-	float ScoreEditorTimeline::getMouseTimelineMs(const ScoreContext& context, bool snap) const
+	float ScoreEditorTimeline::getTimelineMsAtScreenY(const ScoreContext& context,
+	                                                  float screenY) const
 	{
-		if (snap)
-		{
-			return static_cast<float>(accumulateDuration(hoverTick, TICKS_PER_BEAT,
-			                                             context.score.tempoChanges) *
-			                          1000.0);
-		}
-
+		const float tickPosition = position.y + visualOffset - screenY;
 		const float rawTick =
-		    std::max(0.0f, static_cast<float>(-mousePos.y) / std::max(0.0001f, unitHeight * zoom));
+		    std::max(0.0f, tickPosition / std::max(0.0001f, unitHeight * zoom));
 		const int baseTick = static_cast<int>(std::floor(rawTick));
 		const float fraction = rawTick - baseTick;
 		const float start =
@@ -4166,6 +4184,33 @@ namespace MikuMikuWorld
 		const float end =
 		    accumulateDuration(baseTick + 1, TICKS_PER_BEAT, context.score.tempoChanges);
 		return (start + ((end - start) * fraction)) * 1000.0f;
+	}
+
+	float ScoreEditorTimeline::getScreenYFromTimelineMs(const ScoreContext& context,
+	                                                    float timelineMs) const
+	{
+		const int tick = accumulateTicks(timelineMs / 1000.0f, TICKS_PER_BEAT,
+		                                 context.score.tempoChanges);
+		return position.y - tickToPosition(tick) + visualOffset;
+	}
+
+	float ScoreEditorTimeline::snapTimelineMs(const ScoreContext& context, float timelineMs,
+	                                          bool roundDown) const
+	{
+		const int tick = accumulateTicks(timelineMs / 1000.0f, TICKS_PER_BEAT,
+		                                 context.score.tempoChanges);
+		const int snappedTick = roundDown ? roundTickDown(tick, division) : snapTick(tick, division);
+		return static_cast<float>(accumulateDuration(snappedTick, TICKS_PER_BEAT,
+		                                             context.score.tempoChanges) *
+		                          1000.0);
+	}
+
+	float ScoreEditorTimeline::getMouseTimelineMs(const ScoreContext& context, bool snap) const
+	{
+		const float timelineMs = getTimelineMsAtScreenY(context, ImGui::GetIO().MousePos.y);
+		if (!snap)
+			return timelineMs;
+		return snapTimelineMs(context, timelineMs, snapMode != SnapMode::Relative);
 	}
 
 	void ScoreEditorTimeline::drawAudioClipWaveform(ScoreContext& context, const AudioClip& clip,
@@ -4185,23 +4230,14 @@ namespace MikuMikuWorld
 		        ? clip.sourceEndMs
 		        : static_cast<float>(context.sourceWaveformL.durationInSeconds * 1000.0);
 
-		auto screenYToTimelineMs = [this, &context](float screenY)
-		{
-			const float tickPosition = position.y + visualOffset - screenY;
-			const float rawTick =
-			    std::max(0.0f, tickPosition / std::max(0.0001f, unitHeight * zoom));
-			const int baseTick = static_cast<int>(std::floor(rawTick));
-			const float fraction = rawTick - baseTick;
-			const float start =
-			    accumulateDuration(baseTick, TICKS_PER_BEAT, context.score.tempoChanges);
-			const float end =
-			    accumulateDuration(baseTick + 1, TICKS_PER_BEAT, context.score.tempoChanges);
-			return (start + ((end - start) * fraction)) * 1000.0f;
-		};
-
 		drawList->PushClipRect(rect.Min, rect.Max, true);
-		const int yStart = static_cast<int>(std::max(rect.Min.y, position.y));
-		const int yEnd = static_cast<int>(std::min(rect.Max.y, position.y + size.y));
+		const float screenYStart = std::max(rect.Min.y, position.y);
+		const float screenYEnd = std::min(rect.Max.y, position.y + size.y);
+		const int timelineYStart =
+		    static_cast<int>(std::floor(position.y + visualOffset - screenYEnd));
+		const int timelineYEnd =
+		    static_cast<int>(std::ceil(position.y + visualOffset - screenYStart));
+		const float durationMs = std::max(1.0f, sourceEndMs - clip.sourceStartMs);
 		for (size_t channelIndex = 0; channelIndex < 2; ++channelIndex)
 		{
 			const bool rightChannel = channelIndex == 1;
@@ -4212,25 +4248,235 @@ namespace MikuMikuWorld
 
 			const ImU32 color = rightChannel ? rightColor : leftColor;
 			const Audio::WaveformMip& mip = waveform.findClosestMip(secondsPerPixel);
-			for (int y = yStart; y <= yEnd; ++y)
+			for (int timelineY = timelineYStart; timelineY <= timelineYEnd; ++timelineY)
 			{
-				const float timelineMs = screenYToTimelineMs(static_cast<float>(y));
+				const float screenY = std::floor(position.y + visualOffset - timelineY);
+				if (screenY < screenYStart || screenY > screenYEnd)
+					continue;
+
+				const int tick = positionToTick(timelineY);
+				const float timelineMs =
+				    static_cast<float>(accumulateDuration(tick, TICKS_PER_BEAT,
+				                                          context.score.tempoChanges) *
+				                       1000.0);
 				const float sourceMs = clip.sourceStartMs + (timelineMs - clip.timelineStartMs);
 				if (sourceMs < clip.sourceStartMs || sourceMs > sourceEndMs)
 					continue;
 
+				const float clipTimeMs = sourceMs - clip.sourceStartMs;
+				float envelope = clip.gain;
+				if (clip.fadeInMs > 0.0f)
+					envelope *= std::clamp(clipTimeMs / clip.fadeInMs, 0.0f, 1.0f);
+				if (clip.fadeOutMs > 0.0f)
+					envelope *= std::clamp((durationMs - clipTimeMs) / clip.fadeOutMs, 0.0f, 1.0f);
+
 				const double sourceSeconds = sourceMs / 1000.0;
 				const float amplitude = std::max(
 				    waveform.getAmplitudeAt(mip, sourceSeconds, secondsPerPixel), 0.0f);
-				const float barValue = amplitude * maxBarValue;
+				const float barValue = amplitude * envelope * maxBarValue;
 				const float halfBar = std::max(0.75f, barValue);
-				const ImVec2 p1(centerX, static_cast<float>(y));
+				const ImVec2 p1(centerX, screenY);
 				const ImVec2 p2(centerX + (halfBar * (rightChannel ? 1.0f : -1.0f)),
-				                static_cast<float>(y) + 0.75f);
+				                screenY + 0.75f);
 				drawList->AddRectFilled(p1, p2, color);
 			}
 		}
 		drawList->PopClipRect();
+	}
+
+	bool ScoreEditorTimeline::hasAudioRangeSelection(id_t clipId) const
+	{
+		if (audioRangeClip != clipId)
+			return false;
+		return std::abs(audioRangeEndMs - audioRangeStartMs) >= 1.0f;
+	}
+
+	bool ScoreEditorTimeline::splitAudioClipAt(ScoreContext& context, id_t clipId,
+	                                           float timelineMs)
+	{
+		for (AudioClip& clip : context.score.audioTrack.clips)
+		{
+			if (clip.ID != clipId)
+				continue;
+
+			const float sourceEndMs =
+			    clip.sourceEndMs >= 0.0f
+			        ? clip.sourceEndMs
+			        : static_cast<float>(context.sourceWaveformL.durationInSeconds * 1000.0);
+			const float durationMs = std::max(1.0f, sourceEndMs - clip.sourceStartMs);
+			const float clipStartMs = clip.timelineStartMs;
+			const float clipEndMs = clip.timelineStartMs + durationMs;
+			if (timelineMs <= clipStartMs + 1.0f || timelineMs >= clipEndMs - 1.0f)
+				return false;
+
+			const Score prev = context.score;
+			const float splitSourceMs = clip.sourceStartMs + (timelineMs - clipStartMs);
+
+			AudioClip rightClip = clip;
+			rightClip.ID = getNextAudioClipID();
+			rightClip.sourceStartMs = splitSourceMs;
+			rightClip.timelineStartMs = timelineMs;
+			rightClip.fadeInMs = 0.0f;
+
+			clip.sourceEndMs = splitSourceMs;
+			clip.fadeOutMs = 0.0f;
+
+			context.score.audioTrack.clips.push_back(rightClip);
+			context.score.audioTrack.explicitEditorTrack = true;
+			context.selectedAudioClip = rightClip.ID;
+			audioRangeClip = static_cast<id_t>(-1);
+			AudioTrackUtils::syncMusicOffsetFromAudioTrack(context);
+			context.pushHistory("Split Audio Clip", prev, context.score);
+			Result refreshResult = AudioTrackUtils::refreshPlaybackAudio(context);
+			if (!refreshResult.isOk())
+				IO::messageBox(APP_NAME, refreshResult.getMessage(), IO::MessageBoxButtons::Ok,
+				               IO::MessageBoxIcon::Warning);
+			return true;
+		}
+
+		return false;
+	}
+
+	bool ScoreEditorTimeline::splitAudioClipRange(ScoreContext& context, id_t clipId, float startMs,
+	                                              float endMs)
+	{
+		if (endMs < startMs)
+			std::swap(startMs, endMs);
+		if (endMs - startMs < 1.0f)
+			return false;
+
+		auto& clips = context.score.audioTrack.clips;
+		auto it = std::find_if(clips.begin(), clips.end(),
+		                       [clipId](const AudioClip& clip) { return clip.ID == clipId; });
+		if (it == clips.end())
+			return false;
+
+		const AudioClip clip = *it;
+		const float sourceEndMs =
+		    clip.sourceEndMs >= 0.0f
+		        ? clip.sourceEndMs
+		        : static_cast<float>(context.sourceWaveformL.durationInSeconds * 1000.0);
+		const float durationMs = std::max(1.0f, sourceEndMs - clip.sourceStartMs);
+		const float clipStartMs = clip.timelineStartMs;
+		const float clipEndMs = clip.timelineStartMs + durationMs;
+		const float splitStartMs = std::clamp(startMs, clipStartMs, clipEndMs);
+		const float splitEndMs = std::clamp(endMs, clipStartMs, clipEndMs);
+		const bool hasStartSplit = splitStartMs > clipStartMs + 1.0f;
+		const bool hasEndSplit = splitEndMs < clipEndMs - 1.0f;
+		if (!hasStartSplit && !hasEndSplit)
+			return false;
+
+		const Score prev = context.score;
+		std::vector<AudioClip> replacementClips;
+
+		auto makeSegment = [&](float segmentStartMs, float segmentEndMs, bool keepOriginalId)
+		{
+			AudioClip segment = clip;
+			segment.ID = keepOriginalId ? clip.ID : getNextAudioClipID();
+			segment.timelineStartMs = segmentStartMs;
+			segment.sourceStartMs = clip.sourceStartMs + (segmentStartMs - clipStartMs);
+			segment.sourceEndMs = clip.sourceStartMs + (segmentEndMs - clipStartMs);
+			if (segmentStartMs > clipStartMs + 1.0f)
+				segment.fadeInMs = 0.0f;
+			if (segmentEndMs < clipEndMs - 1.0f)
+				segment.fadeOutMs = 0.0f;
+			replacementClips.push_back(segment);
+		};
+
+		const float middleStartMs = hasStartSplit ? splitStartMs : clipStartMs;
+		const float middleEndMs = hasEndSplit ? splitEndMs : clipEndMs;
+		if (hasStartSplit)
+			makeSegment(clipStartMs, splitStartMs, true);
+		makeSegment(middleStartMs, middleEndMs, !hasStartSplit);
+		if (hasEndSplit)
+			makeSegment(splitEndMs, clipEndMs, false);
+
+		const size_t index = static_cast<size_t>(std::distance(clips.begin(), it));
+		clips.erase(clips.begin() + index);
+		clips.insert(clips.begin() + index, replacementClips.begin(), replacementClips.end());
+		context.score.audioTrack.explicitEditorTrack = true;
+		context.selectedAudioClip = replacementClips.size() > 1
+		                                ? replacementClips[hasStartSplit ? 1 : 0].ID
+		                                : replacementClips.front().ID;
+		audioRangeClip = context.selectedAudioClip;
+		audioRangeStartMs = middleStartMs;
+		audioRangeEndMs = middleEndMs;
+		AudioTrackUtils::syncMusicOffsetFromAudioTrack(context);
+		context.pushHistory("Split Audio Range", prev, context.score);
+		Result refreshResult = AudioTrackUtils::refreshPlaybackAudio(context);
+		if (!refreshResult.isOk())
+			IO::messageBox(APP_NAME, refreshResult.getMessage(), IO::MessageBoxButtons::Ok,
+			               IO::MessageBoxIcon::Warning);
+		return true;
+	}
+
+	bool ScoreEditorTimeline::cutAudioClipRange(ScoreContext& context, id_t clipId, float startMs,
+	                                            float endMs)
+	{
+		if (endMs < startMs)
+			std::swap(startMs, endMs);
+		if (endMs - startMs < 1.0f)
+			return false;
+
+		auto& clips = context.score.audioTrack.clips;
+		auto it = std::find_if(clips.begin(), clips.end(),
+		                       [clipId](const AudioClip& clip) { return clip.ID == clipId; });
+		if (it == clips.end())
+			return false;
+
+		const AudioClip clip = *it;
+		const float sourceEndMs =
+		    clip.sourceEndMs >= 0.0f
+		        ? clip.sourceEndMs
+		        : static_cast<float>(context.sourceWaveformL.durationInSeconds * 1000.0);
+		const float durationMs = std::max(1.0f, sourceEndMs - clip.sourceStartMs);
+		const float clipStartMs = clip.timelineStartMs;
+		const float clipEndMs = clip.timelineStartMs + durationMs;
+		const float cutStartMs = std::clamp(startMs, clipStartMs, clipEndMs);
+		const float cutEndMs = std::clamp(endMs, clipStartMs, clipEndMs);
+		if (cutEndMs - cutStartMs < 1.0f)
+			return false;
+
+		const Score prev = context.score;
+		std::vector<AudioClip> replacementClips;
+		const float leftDurationMs = cutStartMs - clipStartMs;
+		const float rightOffsetMs = cutEndMs - clipStartMs;
+
+		if (leftDurationMs > 1.0f)
+		{
+			AudioClip leftClip = clip;
+			leftClip.sourceEndMs = clip.sourceStartMs + leftDurationMs;
+			if (cutEndMs < clipEndMs - 1.0f)
+				leftClip.fadeOutMs = 0.0f;
+			replacementClips.push_back(leftClip);
+		}
+
+		if (cutEndMs < clipEndMs - 1.0f)
+		{
+			AudioClip rightClip = clip;
+			rightClip.ID = getNextAudioClipID();
+			rightClip.sourceStartMs = clip.sourceStartMs + rightOffsetMs;
+			rightClip.sourceEndMs = sourceEndMs;
+			rightClip.timelineStartMs = cutEndMs;
+			if (cutStartMs > clipStartMs + 1.0f)
+				rightClip.fadeInMs = 0.0f;
+			replacementClips.push_back(rightClip);
+		}
+
+		const size_t index = static_cast<size_t>(std::distance(clips.begin(), it));
+		clips.erase(clips.begin() + index);
+		clips.insert(clips.begin() + index, replacementClips.begin(), replacementClips.end());
+		context.score.audioTrack.explicitEditorTrack = true;
+		context.selectedAudioClip =
+		    replacementClips.empty() ? static_cast<id_t>(-1) : replacementClips.back().ID;
+		audioRangeClip = static_cast<id_t>(-1);
+		AudioTrackUtils::syncMusicOffsetFromAudioTrack(context);
+		context.pushHistory("Cut Audio Range", prev, context.score);
+		Result refreshResult = AudioTrackUtils::refreshPlaybackAudio(context);
+		if (!refreshResult.isOk())
+			IO::messageBox(APP_NAME, refreshResult.getMessage(), IO::MessageBoxButtons::Ok,
+			               IO::MessageBoxIcon::Warning);
+		return true;
 	}
 
 	void ScoreEditorTimeline::drawAudioTrack(ScoreContext& context)
@@ -4264,21 +4510,41 @@ namespace MikuMikuWorld
 			                                                 : IM_COL32(185, 218, 238, 80),
 			                      context.audioLayerSelected ? IM_COL32(155, 195, 220, 130)
 			                                                 : IM_COL32(155, 195, 220, 65));
+
+			if (hasAudioRangeSelection(clip.ID))
+			{
+				const float rangeStartMs = std::min(audioRangeStartMs, audioRangeEndMs);
+				const float rangeEndMs = std::max(audioRangeStartMs, audioRangeEndMs);
+				const float y1 = getScreenYFromTimelineMs(context, rangeStartMs);
+				const float y2 = getScreenYFromTimelineMs(context, rangeEndMs);
+				const ImRect rangeRect(ImVec2(rect.Min.x, std::min(y1, y2)),
+				                       ImVec2(rect.Max.x, std::max(y1, y2)));
+				const ImRect clippedRange(ImVec2(rangeRect.Min.x, std::max(rangeRect.Min.y, rect.Min.y)),
+				                          ImVec2(rangeRect.Max.x, std::min(rangeRect.Max.y, rect.Max.y)));
+				if (clippedRange.Max.y > clippedRange.Min.y)
+				{
+					drawList->AddRectFilled(clippedRange.Min, clippedRange.Max,
+					                        IM_COL32(255, 255, 255, 38), 2.0f);
+					drawList->AddRect(clippedRange.Min, clippedRange.Max,
+					                  IM_COL32(255, 255, 255, 130), 2.0f);
+				}
+			}
+
 			drawList->AddRect(rect.Min, rect.Max, borderColor, 4.0f, 0,
 			                  context.audioLayerSelected ? 2.0f : 1.0f);
 
 			if (context.audioLayerSelected)
 			{
 				const float dpiScale = ImGui::GetMainViewport()->DpiScale;
-				const float handleHeight = 5.0f * dpiScale;
+				const float grabWidth = 14.0f * dpiScale;
 				const float knobRadius = 4.0f * dpiScale;
 				const ImU32 handleColor =
 				    context.score.audioTrack.locked || clip.locked ? IM_COL32(180, 180, 180, 120)
 				                                                   : IM_COL32(225, 240, 255, 180);
-				drawList->AddRectFilled(rect.Min, ImVec2(rect.Max.x, rect.Min.y + handleHeight),
-				                        handleColor, 4.0f);
-				drawList->AddRectFilled(ImVec2(rect.Min.x, rect.Max.y - handleHeight), rect.Max,
-				                        handleColor, 4.0f);
+				drawList->AddRectFilled(rect.Min, ImVec2(rect.Min.x + grabWidth, rect.Max.y),
+				                        selected ? IM_COL32(130, 190, 230, 92)
+				                                 : IM_COL32(130, 190, 230, 55),
+				                        4.0f, ImDrawFlags_RoundCornersLeft);
 
 				const float fadeInPixels =
 				    static_cast<float>((clip.fadeInMs / 1000.0f / waveformSecondsPerPixel) * zoom);
@@ -4288,10 +4554,12 @@ namespace MikuMikuWorld
 				const float fadeOutY = rect.Min.y + std::min(rect.GetHeight(), fadeOutPixels);
 				const ImVec2 fadeInHandle(rect.Min.x + (14.0f * dpiScale), fadeInY);
 				const ImVec2 fadeOutHandle(rect.Max.x - (14.0f * dpiScale), fadeOutY);
-				drawList->AddLine(ImVec2(fadeInHandle.x, rect.Max.y), fadeInHandle,
-				                  IM_COL32(255, 255, 255, 95), 1.0f);
-				drawList->AddLine(ImVec2(fadeOutHandle.x, rect.Min.y), fadeOutHandle,
-				                  IM_COL32(255, 255, 255, 95), 1.0f);
+				drawList->AddLine(ImVec2(rect.Min.x, fadeInY), ImVec2(rect.Max.x, fadeInY),
+				                  IM_COL32(255, 255, 255, clip.fadeInMs > 0.0f ? 110 : 45),
+				                  clip.fadeInMs > 0.0f ? 1.5f : 1.0f);
+				drawList->AddLine(ImVec2(rect.Min.x, fadeOutY), ImVec2(rect.Max.x, fadeOutY),
+				                  IM_COL32(255, 255, 255, clip.fadeOutMs > 0.0f ? 110 : 45),
+				                  clip.fadeOutMs > 0.0f ? 1.5f : 1.0f);
 				drawList->AddCircleFilled(fadeInHandle, knobRadius, handleColor);
 				drawList->AddCircleFilled(fadeOutHandle, knobRadius, handleColor);
 
@@ -4310,13 +4578,17 @@ namespace MikuMikuWorld
 
 	void ScoreEditorTimeline::updateAudioTrackEditing(ScoreContext& context)
 	{
+		suppressTimelineContextMenu = false;
 		if (!context.audioLayerSelected || context.score.audioTrack.locked ||
 		    !context.score.audioTrack.visible)
 			return;
 
 		const ImGuiIO& io = ImGui::GetIO();
-		const bool snapDisabled = io.KeyShift;
-		const float currentTimelineMs = getMouseTimelineMs(context, !snapDisabled);
+		const bool useSnap = io.KeyShift;
+		const float currentTimelineMs = getMouseTimelineMs(context, useSnap);
+		const float playheadTimelineMs = static_cast<float>(
+		    accumulateDuration(context.currentTick, TICKS_PER_BEAT, context.score.tempoChanges) *
+		    1000.0);
 
 		auto findClip = [&](id_t id) -> AudioClip*
 		{
@@ -4328,9 +4600,69 @@ namespace MikuMikuWorld
 			return nullptr;
 		};
 
+		auto warnRefreshFailure = [](const Result& result)
+		{
+			if (!result.isOk())
+				IO::messageBox(APP_NAME, result.getMessage(), IO::MessageBoxButtons::Ok,
+				               IO::MessageBoxIcon::Warning);
+		};
+
+		if (ImGui::BeginPopup("audio_clip_context"))
+		{
+			AudioClip* menuClip = findClip(audioContextMenuClip);
+			bool canCut = menuClip && hasAudioRangeSelection(audioContextMenuClip);
+			bool canSplit = false;
+			if (menuClip)
+			{
+				const float sourceEndMs =
+				    menuClip->sourceEndMs >= 0.0f
+				        ? menuClip->sourceEndMs
+				        : static_cast<float>(context.sourceWaveformL.durationInSeconds * 1000.0);
+				const float durationMs = std::max(1.0f, sourceEndMs - menuClip->sourceStartMs);
+				if (hasAudioRangeSelection(audioContextMenuClip))
+				{
+					const float rangeStartMs = std::min(audioRangeStartMs, audioRangeEndMs);
+					const float rangeEndMs = std::max(audioRangeStartMs, audioRangeEndMs);
+					canSplit = rangeStartMs > menuClip->timelineStartMs + 1.0f ||
+					           rangeEndMs < menuClip->timelineStartMs + durationMs - 1.0f;
+				}
+				else
+				{
+					canSplit = playheadTimelineMs > menuClip->timelineStartMs + 1.0f &&
+					           playheadTimelineMs < menuClip->timelineStartMs + durationMs - 1.0f;
+				}
+			}
+
+			if (ImGui::MenuItem(getString("cut"), nullptr, false, canCut))
+			{
+				cutAudioClipRange(context, audioContextMenuClip, audioRangeStartMs,
+				                  audioRangeEndMs);
+			}
+			if (ImGui::MenuItem(getString("audio_clip_split"), nullptr, false, canSplit))
+			{
+				if (hasAudioRangeSelection(audioContextMenuClip))
+				{
+					splitAudioClipRange(context, audioContextMenuClip, audioRangeStartMs,
+					                    audioRangeEndMs);
+				}
+				else
+				{
+					splitAudioClipAt(context, audioContextMenuClip, playheadTimelineMs);
+				}
+			}
+			ImGui::EndPopup();
+		}
+
 		if (ImGui::IsKeyPressed(ImGuiKey_Delete) &&
 		    context.selectedAudioClip != static_cast<id_t>(-1))
 		{
+			if (hasAudioRangeSelection(context.selectedAudioClip))
+			{
+				cutAudioClipRange(context, context.selectedAudioClip, audioRangeStartMs,
+				                  audioRangeEndMs);
+				return;
+			}
+
 			Score prev = context.score;
 			context.score.audioTrack.explicitEditorTrack = true;
 			auto& clips = context.score.audioTrack.clips;
@@ -4339,18 +4671,18 @@ namespace MikuMikuWorld
 			                           { return clip.ID == context.selectedAudioClip; }),
 			            clips.end());
 			context.selectedAudioClip = static_cast<id_t>(-1);
+			audioRangeClip = static_cast<id_t>(-1);
 			context.pushHistory("Delete Audio Clip", prev, context.score);
-			Result refreshResult = AudioTrackUtils::refreshPlaybackAudio(context);
-			if (!refreshResult.isOk())
-				IO::messageBox(APP_NAME, refreshResult.getMessage(), IO::MessageBoxButtons::Ok,
-				               IO::MessageBoxIcon::Warning);
+			warnRefreshFailure(AudioTrackUtils::refreshPlaybackAudio(context));
 			return;
 		}
 
 		if (audioDragMode == AudioDragMode::None)
 		{
-			for (AudioClip& clip : context.score.audioTrack.clips)
+			for (auto it = context.score.audioTrack.clips.rbegin();
+			     it != context.score.audioTrack.clips.rend(); ++it)
 			{
+				AudioClip& clip = *it;
 				if (clip.locked)
 					continue;
 
@@ -4379,7 +4711,8 @@ namespace MikuMikuWorld
 				const ImRect fadeOutHandleRect(
 				    ImVec2(fadeOutHandle.x - 8.0f * dpiScale, fadeOutHandle.y - 8.0f * dpiScale),
 				    ImVec2(fadeOutHandle.x + 8.0f * dpiScale, fadeOutHandle.y + 8.0f * dpiScale));
-				AudioDragMode hoverMode = AudioDragMode::Move;
+				const float grabWidth = 16.0f * dpiScale;
+				AudioDragMode hoverMode = AudioDragMode::RangeSelect;
 				if (fadeInHandleRect.Contains(io.MousePos) && clipDurationMs > 1.0f)
 					hoverMode = AudioDragMode::FadeIn;
 				else if (fadeOutHandleRect.Contains(io.MousePos) && clipDurationMs > 1.0f)
@@ -4388,9 +4721,24 @@ namespace MikuMikuWorld
 					hoverMode = AudioDragMode::TrimEnd;
 				else if (std::abs(io.MousePos.y - rect.Max.y) <= edgeThreshold)
 					hoverMode = AudioDragMode::TrimStart;
+				else if (io.MousePos.x <= rect.Min.x + grabWidth)
+					hoverMode = AudioDragMode::Move;
 
-				ImGui::SetMouseCursor(hoverMode == AudioDragMode::Move ? ImGuiMouseCursor_Hand
-				                                                        : ImGuiMouseCursor_ResizeNS);
+				if (hoverMode == AudioDragMode::Move)
+					ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+				else if (hoverMode != AudioDragMode::RangeSelect)
+					ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+
+				if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+				{
+					context.clearSelection();
+					context.audioLayerSelected = true;
+					context.selectedAudioClip = clip.ID;
+					audioContextMenuClip = clip.ID;
+					suppressTimelineContextMenu = true;
+					ImGui::OpenPopup("audio_clip_context");
+					break;
+				}
 
 				if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 				{
@@ -4402,6 +4750,16 @@ namespace MikuMikuWorld
 					audioDragStartScore = context.score;
 					audioDragStartTimelineMs = currentTimelineMs;
 					audioDragMode = hoverMode;
+					if (audioDragMode == AudioDragMode::RangeSelect)
+					{
+						audioRangeClip = clip.ID;
+						audioRangeStartMs = currentTimelineMs;
+						audioRangeEndMs = currentTimelineMs;
+					}
+					else
+					{
+						audioRangeClip = static_cast<id_t>(-1);
+					}
 					break;
 				}
 			}
@@ -4425,22 +4783,94 @@ namespace MikuMikuWorld
 			switch (audioDragMode)
 			{
 			case AudioDragMode::Move:
+			{
 				clip->timelineStartMs = audioDragStartClip.timelineStartMs + deltaMs;
+				if (useSnap && snapMode != SnapMode::Relative)
+					clip->timelineStartMs =
+					    snapTimelineMs(context, clip->timelineStartMs, true);
+
+				const float movingDurationMs = std::max(1.0f, startSourceEndMs -
+				                                             audioDragStartClip.sourceStartMs);
+				const float edgeSnapThresholdMs = std::max(
+				    20.0f,
+				    std::abs(getTimelineMsAtScreenY(context, io.MousePos.y + 10.0f) -
+				             getTimelineMsAtScreenY(context, io.MousePos.y)));
+				const float candidateStartMs = clip->timelineStartMs;
+				const float candidateEndMs = candidateStartMs + movingDurationMs;
+				float bestStartMs = candidateStartMs;
+				float bestDistanceMs = edgeSnapThresholdMs;
+				auto trySnapEdge = [&](float movingEdgeMs, float targetEdgeMs, float edgeOffsetMs)
+				{
+					const float distance = std::abs(movingEdgeMs - targetEdgeMs);
+					if (distance <= bestDistanceMs)
+					{
+						bestDistanceMs = distance;
+						bestStartMs = targetEdgeMs - edgeOffsetMs;
+					}
+				};
+
+				for (const AudioClip& otherClip : context.score.audioTrack.clips)
+				{
+					if (otherClip.ID == clip->ID)
+						continue;
+
+					const float otherSourceEndMs =
+					    otherClip.sourceEndMs >= 0.0f
+					        ? otherClip.sourceEndMs
+					        : static_cast<float>(context.sourceWaveformL.durationInSeconds *
+					                             1000.0);
+					const float otherDurationMs =
+					    std::max(1.0f, otherSourceEndMs - otherClip.sourceStartMs);
+					const float otherStartMs = otherClip.timelineStartMs;
+					const float otherEndMs = otherClip.timelineStartMs + otherDurationMs;
+
+					trySnapEdge(candidateStartMs, otherStartMs, 0.0f);
+					trySnapEdge(candidateStartMs, otherEndMs, 0.0f);
+					trySnapEdge(candidateEndMs, otherStartMs, movingDurationMs);
+					trySnapEdge(candidateEndMs, otherEndMs, movingDurationMs);
+				}
+
+				clip->timelineStartMs = std::max(0.0f, bestStartMs);
+				break;
+			}
+			case AudioDragMode::RangeSelect:
+				audioRangeEndMs = currentTimelineMs;
 				break;
 			case AudioDragMode::TrimStart:
 			{
+				float trimDelta = deltaMs;
+				if (useSnap && snapMode != SnapMode::Relative)
+				{
+					const float snappedBoundary =
+					    snapTimelineMs(context, audioDragStartClip.timelineStartMs + trimDelta,
+					                   true);
+					trimDelta = snappedBoundary - audioDragStartClip.timelineStartMs;
+				}
 				const float maxTrim = std::max(0.0f, startSourceEndMs - 1.0f);
-				const float newStart = std::clamp(audioDragStartClip.sourceStartMs + deltaMs,
+				const float newStart = std::clamp(audioDragStartClip.sourceStartMs + trimDelta,
 				                                  0.0f, maxTrim);
-				const float trimDelta = newStart - audioDragStartClip.sourceStartMs;
+				const float appliedTrimDelta = newStart - audioDragStartClip.sourceStartMs;
 				clip->sourceStartMs = newStart;
-				clip->timelineStartMs = audioDragStartClip.timelineStartMs + trimDelta;
+				clip->timelineStartMs = audioDragStartClip.timelineStartMs + appliedTrimDelta;
 				break;
 			}
 			case AudioDragMode::TrimEnd:
-				clip->sourceEndMs = std::clamp(startSourceEndMs + deltaMs,
-				                               clip->sourceStartMs + 1.0f, sourceLengthMs);
+			{
+				float newEnd = startSourceEndMs + deltaMs;
+				if (useSnap && snapMode != SnapMode::Relative)
+				{
+					const float snappedBoundary = snapTimelineMs(
+					    context,
+					    audioDragStartClip.timelineStartMs +
+					        (newEnd - audioDragStartClip.sourceStartMs),
+					    true);
+					newEnd = audioDragStartClip.sourceStartMs +
+					         (snappedBoundary - audioDragStartClip.timelineStartMs);
+				}
+				clip->sourceEndMs =
+				    std::clamp(newEnd, clip->sourceStartMs + 1.0f, sourceLengthMs);
 				break;
+			}
 			case AudioDragMode::FadeIn:
 			{
 				const float durationMs =
@@ -4463,17 +4893,20 @@ namespace MikuMikuWorld
 				break;
 			}
 
-			context.score.audioTrack.explicitEditorTrack = true;
-			if (audioDragMode == AudioDragMode::Move || audioDragMode == AudioDragMode::TrimStart)
-				AudioTrackUtils::syncMusicOffsetFromAudioTrack(context);
+			if (audioDragMode != AudioDragMode::RangeSelect)
+			{
+				context.score.audioTrack.explicitEditorTrack = true;
+				if (audioDragMode == AudioDragMode::Move || audioDragMode == AudioDragMode::TrimStart)
+					AudioTrackUtils::syncMusicOffsetFromAudioTrack(context);
+			}
 
 			if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
 			{
-				context.pushHistory("Edit Audio Clip", audioDragStartScore, context.score);
-				Result refreshResult = AudioTrackUtils::refreshPlaybackAudio(context);
-				if (!refreshResult.isOk())
-					IO::messageBox(APP_NAME, refreshResult.getMessage(), IO::MessageBoxButtons::Ok,
-					               IO::MessageBoxIcon::Warning);
+				if (audioDragMode != AudioDragMode::RangeSelect)
+				{
+					context.pushHistory("Edit Audio Clip", audioDragStartScore, context.score);
+					warnRefreshFailure(AudioTrackUtils::refreshPlaybackAudio(context));
+				}
 				audioDragMode = AudioDragMode::None;
 				draggingAudioClip = static_cast<id_t>(-1);
 			}

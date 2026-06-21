@@ -123,6 +123,7 @@ namespace MikuMikuWorld
 		{
 			None,
 			Move,
+			RangeSelect,
 			TrimStart,
 			TrimEnd,
 			FadeIn,
@@ -133,6 +134,11 @@ namespace MikuMikuWorld
 		AudioClip audioDragStartClip{};
 		Score audioDragStartScore{};
 		float audioDragStartTimelineMs{};
+		id_t audioRangeClip{ static_cast<id_t>(-1) };
+		float audioRangeStartMs{};
+		float audioRangeEndMs{};
+		id_t audioContextMenuClip{ static_cast<id_t>(-1) };
+		bool suppressTimelineContextMenu{ false };
 
 		float time{};
 		float timeLastFrame{};
@@ -214,6 +220,13 @@ namespace MikuMikuWorld
 		void updateAudioTrackEditing(ScoreContext& context);
 		ImRect getAudioClipRect(ScoreContext& context, const AudioClip& clip) const;
 		float getMouseTimelineMs(const ScoreContext& context, bool snap) const;
+		float getTimelineMsAtScreenY(const ScoreContext& context, float screenY) const;
+		float getScreenYFromTimelineMs(const ScoreContext& context, float timelineMs) const;
+		float snapTimelineMs(const ScoreContext& context, float timelineMs, bool roundDown) const;
+		bool hasAudioRangeSelection(id_t clipId) const;
+		bool splitAudioClipAt(ScoreContext& context, id_t clipId, float timelineMs);
+		bool splitAudioClipRange(ScoreContext& context, id_t clipId, float startMs, float endMs);
+		bool cutAudioClipRange(ScoreContext& context, id_t clipId, float startMs, float endMs);
 		void drawHiSpeedGraph(ScoreContext& context);
 
 		void drawHoldCurve(const Note& n1, const Note& n2, EaseType ease, bool isGuide,
@@ -357,7 +370,7 @@ namespace MikuMikuWorld
 
 		void previousTick(ScoreContext& context);
 		void nextTick(ScoreContext& context);
-		int roundTickDown(int tick, int division);
+		int roundTickDown(int tick, int division) const;
 		void focusCursor(ScoreContext& context, Direction direction);
 
 		constexpr inline TimelineMode getMode() const { return currentMode; }

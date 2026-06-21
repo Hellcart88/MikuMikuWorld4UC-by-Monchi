@@ -138,6 +138,7 @@ shrink_up, Büyüt
 #- compress_selection,
 connect_holds, Basili Tutma Bagla
 split_hold, Basili Tutmayi Böl
+audio_clip_split, Split Clip
 repeat_hold_mids, Basili Tutma Ortalarini Tekrarla
 #- hold_to_traces,
 #- add_traces_for_hold,

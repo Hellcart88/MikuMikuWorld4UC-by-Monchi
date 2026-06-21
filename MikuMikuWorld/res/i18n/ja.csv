@@ -146,6 +146,7 @@ shrink_up, 縮める（最後に合わせる）
 compress_selection, 選択範囲を圧縮
 connect_holds, 連結
 split_hold, 切断
+audio_clip_split, クリップを分割
 repeat_hold_mids, 中継点を繰り返す
 hold_to_traces, トレースに変換
 add_traces_for_hold, トレースを追加

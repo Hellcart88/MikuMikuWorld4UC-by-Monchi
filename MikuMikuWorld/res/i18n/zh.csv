@@ -134,6 +134,7 @@ shrink_up,向上收缩
 compress_selection,压缩选择
 connect_holds,连接长按
 split_hold,分割长按
+audio_clip_split,Split Clip
 repeat_hold_mids,重复长按中间
 hold_to_traces,长按转轨迹
 add_traces_for_hold,为长按添加轨迹

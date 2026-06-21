@@ -628,7 +628,11 @@ namespace MikuMikuWorld
 		if (result.isOk() || filename.empty())
 		{
 			if (changingSource)
+			{
 				context.score.audioTrack = AudioTrack{};
+				context.workingData.musicOffset = 0.0f;
+				context.score.metadata.musicOffset = 0.0f;
+			}
 			context.workingData.musicFilename = filename;
 		}
 		else
