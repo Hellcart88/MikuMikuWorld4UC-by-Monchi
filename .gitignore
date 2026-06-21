@@ -372,3 +372,4 @@ installer.nsi
 # VSCode settings
 .vscode/
 .update-changelog
+Depends/ffmpeg/bin/ffmpeg.exe
