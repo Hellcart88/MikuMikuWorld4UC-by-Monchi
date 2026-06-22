@@ -206,6 +206,7 @@ tick,Tick
 remove,Remove
 edit_time_signature,Edit Time Signature
 measure,Measure
+meta_event,Meta Event
 skill,Skill
 fever,FEVER
 increase_note_size,Increase Note Size

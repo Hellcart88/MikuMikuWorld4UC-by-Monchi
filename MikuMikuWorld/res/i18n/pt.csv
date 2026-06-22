@@ -193,6 +193,7 @@ tick, Tick
 remove, Remover 
 edit_time_signature, Editar indicação do tempo
 measure, Medida
+meta_event,Meta Event
 skill, Habilidade
 fever, FEVER
 increase_note_size, Aumentar tamanho da nota

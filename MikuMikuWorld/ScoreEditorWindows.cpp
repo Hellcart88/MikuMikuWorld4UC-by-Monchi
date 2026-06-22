@@ -765,7 +765,8 @@ namespace MikuMikuWorld
 				UI::endPropertyColumns();
 			}
 
-			if (ImGui::CollapsingHeader("Meta Event", ImGuiTreeNodeFlags_DefaultOpen))
+			if (ImGui::CollapsingHeader(getString("meta_event"),
+			                            ImGuiTreeNodeFlags_DefaultOpen))
 			{
 				UI::beginPropertyColumns();
 				switch (selectedMeta.kind)
@@ -799,7 +800,7 @@ namespace MikuMikuWorld
 					{
 						TimeSignature& ts = context.score.timeSignatures[(int)selectedMeta.key];
 						int measure = ts.measure;
-						if (UI::addIntProperty("Measure", measure, 0, INT_MAX))
+						if (UI::addIntProperty(getString("measure"), measure, 0, INT_MAX))
 						{
 							if (measure != ts.measure &&
 							    context.score.timeSignatures.find(measure) ==

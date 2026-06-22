@@ -195,6 +195,7 @@ tick, Тик
 remove, Удалить
 edit_time_signature, Изменить отметку времени
 measure, Такт
+meta_event,Meta Event
 skill, Скилл
 fever, FEVER
 increase_note_size, Увеличить размер ноты

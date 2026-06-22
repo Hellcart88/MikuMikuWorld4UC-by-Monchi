@@ -186,6 +186,7 @@ tick,刻度
 remove,移除
 edit_time_signature,编辑拍号
 measure,小节
+meta_event,Meta Event
 skill,技能
 fever,FEVER
 increase_note_size,增大音符尺寸

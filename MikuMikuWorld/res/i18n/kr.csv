@@ -193,6 +193,7 @@ tick,티크
 remove,제거하다
 edit_time_signature,박자표 편집
 measure,규준
+meta_event,Meta Event
 skill,스킬
 fever,FEVER
 increase_note_size,노트 크기 늘리기

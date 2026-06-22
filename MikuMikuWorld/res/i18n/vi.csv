@@ -193,6 +193,7 @@ tick,Tick
 remove,Xóa
 edit_time_signature,Sửa Time Signature
 measure,Measure
+meta_event,Meta Event
 skill,Kĩ năng
 fever,FEVER
 increase_note_size,Tăng kích cỡ note

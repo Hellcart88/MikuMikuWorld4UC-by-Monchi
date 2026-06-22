@@ -201,6 +201,7 @@ tick, Tick
 remove, 削除
 edit_time_signature, 拍子を編集
 measure, 小節
+meta_event,メタイベント
 skill, スキル
 fever, FEVER
 increase_note_size, ノーツの幅を広げる
@@ -387,15 +388,15 @@ life_point,ライフポイント
 sound_effect,SE
 sound_effect_default,デフォルト
 sound_effect_none,なし
-sound_effect_tap_perfect,TapPerfect
-sound_effect_flick,Flick
-sound_effect_trace,Trace
-sound_effect_tick,Tick
-sound_effect_crit_tap,CritTap
-sound_effect_crit_flick,CritFlick
-sound_effect_crit_trace,CritTrace
-sound_effect_crit_tick,CritTick
-sound_effect_damage,Damage
+sound_effect_tap_perfect,タップ
+sound_effect_flick,フリック
+sound_effect_trace,トレース
+sound_effect_tick,ティック
+sound_effect_crit_tap,クリティカルタップ
+sound_effect_crit_flick,クリティカルフリック
+sound_effect_crit_trace,クリティカルトレース
+sound_effect_crit_tick,クリティカルティック
+sound_effect_damage,ダメージ
 hold_step_layer,ホールド中継点レイヤー
 hold_step_layer_top,上
 hold_step_layer_bottom,下
