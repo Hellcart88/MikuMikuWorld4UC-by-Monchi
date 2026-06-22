@@ -1536,7 +1536,6 @@ namespace MikuMikuWorld
 			                               : ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered));
 			ImGui::PushStyleColor(ImGuiCol_ButtonActive,
 			                      ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-			// ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
 
 			const char* label = getString(labelKey);
 			const float width =
@@ -1552,9 +1551,7 @@ namespace MikuMikuWorld
 				}
 			}
 
-			//ImGui::PopStyleVar();
 			ImGui::PopStyleColor(3);
-			//ImGui::ShowStyleEditor();
 		};
 
 		ImGui::SameLine(0.0f, 18.0f);

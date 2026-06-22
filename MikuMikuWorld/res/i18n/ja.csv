@@ -300,7 +300,7 @@ zoom_out, ズームアウト
 
 # プレビュー・キーコンフィグ関連
 preview, プレビュー
-score_preview, 譜面プレビュー
+score_preview, プレビュー
 notes_speed, ノーツの速さ
 holds_alpha, ロングノーツの不透明度
 guides_alpha, ガイドノーツの不透明度

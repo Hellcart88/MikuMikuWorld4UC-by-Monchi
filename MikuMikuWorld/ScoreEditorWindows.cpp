@@ -571,7 +571,7 @@ namespace MikuMikuWorld
 		}
 
 		if (ImGui::CollapsingHeader(
-		        IO::concat(ICON_FA_GAMEPAD, getString("level_data"), " ").c_str(),
+		        IO::concat(ICON_FA_FILE, getString("level_data"), " ").c_str(),
 		        ImGuiTreeNodeFlags_DefaultOpen))
 		{
 			UI::beginPropertyColumns();
