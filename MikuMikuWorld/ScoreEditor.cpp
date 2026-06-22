@@ -1127,12 +1127,11 @@ namespace MikuMikuWorld
 		    std::abs(toolbarPlaybackSpeed - std::round(toolbarPlaybackSpeed)) < 0.001f
 		        ? IO::formatString("%.1f", toolbarPlaybackSpeed)
 		        : IO::formatString("%.2f", toolbarPlaybackSpeed);
-		UI::transparentButton(IO::formatString("%sx%s", ICON_FA_PLAY,
-		                                       playbackSpeedText.c_str())
-		                          .c_str(),
-		                      ImVec2(ImGui::CalcTextSize(ICON_FA_PLAY "x0.25").x + 8.0f,
-		                             UI::toolbarBtnSize.y),
-		                      false, false);
+		UI::toolbarLabel(IO::formatString("%sx%s", ICON_FA_PLAY,
+		                                  playbackSpeedText.c_str())
+		                     .c_str(),
+		                 ImVec2(ImGui::CalcTextSize(ICON_FA_PLAY "x0.25").x + 8.0f,
+		                        UI::toolbarBtnSize.y));
 
 		ImGui::SameLine();
 		if (UI::transparentButton(ICON_FA_PLUS, UI::toolbarBtnSize, false,

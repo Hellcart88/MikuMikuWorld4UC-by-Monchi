@@ -1327,9 +1327,15 @@ namespace MikuMikuWorld
 		ImGui::SetCursorPosX(centeredXBtn);
 		if (UI::transparentButton(ICON_FA_MINUS, UI::btnNormal, false, timeline.getPlaybackSpeed() > 0.25f)) timeline.setPlaybackSpeed(context, timeline.getPlaybackSpeed() - 0.25f);
 
-		const float playbackStrWidth = ImGui::CalcTextSize("0000%").x;
-		ImGui::SetCursorPosX(toolBarWidth / 2 - playbackStrWidth / 2);
-		UI::transparentButton(IO::formatString("%.0f%%", timeline.getPlaybackSpeed() * 100).c_str(), ImVec2{playbackStrWidth, UI::btnNormal.y }, false, false);
+		const float playbackLabelWidth = ImGui::CalcTextSize(ICON_FA_PLAY "x0.25").x + 8.0f;
+		const float playbackSpeed = timeline.getPlaybackSpeed();
+		const std::string playbackSpeedText =
+		    std::abs(playbackSpeed - std::round(playbackSpeed)) < 0.001f
+		        ? IO::formatString("%.1f", playbackSpeed)
+		        : IO::formatString("%.2f", playbackSpeed);
+		ImGui::SetCursorPosX(toolBarWidth / 2 - playbackLabelWidth / 2);
+		UI::toolbarLabel(IO::formatString("%sx%s", ICON_FA_PLAY, playbackSpeedText.c_str()).c_str(),
+		                 ImVec2{ playbackLabelWidth, UI::btnNormal.y });
 
 		ImGui::SetCursorPosX(centeredXBtn);
 		if (UI::transparentButton(ICON_FA_PLUS, UI::btnNormal, false, timeline.getPlaybackSpeed() < 1.0f)) timeline.setPlaybackSpeed(context, timeline.getPlaybackSpeed() + 0.25f);

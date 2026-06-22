@@ -65,6 +65,24 @@ namespace MikuMikuWorld
 		return pressed;
 	}
 
+	void UI::toolbarLabel(const char* text, ImVec2 size)
+	{
+		const ImVec2 textSize = ImGui::CalcTextSize(text);
+		if (size.x <= 0.0f)
+			size.x = textSize.x;
+		if (size.y <= 0.0f)
+			size.y = textSize.y;
+
+		ImGui::Dummy(size);
+		const ImVec2 min = ImGui::GetItemRectMin();
+		const ImVec2 max = ImGui::GetItemRectMax();
+		const ImVec2 textPos{
+			min.x + std::max(0.0f, (max.x - min.x - textSize.x) * 0.5f),
+			min.y + std::max(0.0f, (max.y - min.y - textSize.y) * 0.5f)
+		};
+		ImGui::GetWindowDrawList()->AddText(textPos, ImGui::GetColorU32(ImGuiCol_Text), text);
+	}
+
 	bool UI::transparentButton2(const char* txt, ImVec2 pos, ImVec2 size)
 	{
 		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
@@ -386,9 +404,7 @@ namespace MikuMikuWorld
 		if (!curr.size())
 			curr = items[value];
 		bool act = false;
-		const bool comboOpen = ImGui::BeginCombo(id, "");
-		const ImVec2 comboMin = ImGui::GetItemRectMin();
-		const ImVec2 comboMax = ImGui::GetItemRectMax();
+		const bool comboOpen = ImGui::BeginCombo(id, curr.c_str());
 		const bool comboHovered = ImGui::IsItemHovered();
 		if (comboOpen)
 		{
@@ -408,13 +424,6 @@ namespace MikuMikuWorld
 
 			ImGui::EndCombo();
 		}
-		const float arrowWidth = ImGui::GetFrameHeight();
-		const ImVec2 textSize = ImGui::CalcTextSize(curr.c_str());
-		const float textStartX =
-		    comboMin.x + std::max(0.0f, ((comboMax.x - comboMin.x - arrowWidth) - textSize.x) * 0.5f);
-		const float textStartY = comboMin.y + ((comboMax.y - comboMin.y) - textSize.y) * 0.5f;
-		ImGui::GetForegroundDrawList()->AddText(ImVec2(textStartX, textStartY),
-		                                        ImGui::GetColorU32(ImGuiCol_Text), curr.c_str());
 
 		if (comboHovered)
 		{

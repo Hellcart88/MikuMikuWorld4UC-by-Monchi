@@ -66,6 +66,7 @@ namespace MikuMikuWorld
 
 		static bool transparentButton(const char* txt, ImVec2 size = btnNormal, bool repeat = false,
 		                              bool enabled = true);
+		static void toolbarLabel(const char* text, ImVec2 size);
 		static bool transparentButton2(const char* txt, ImVec2 pos, ImVec2 size);
 		static bool coloredButton(const char* txt, ImVec2 pos, ImVec2 size, ImU32 col,
 		                          bool enabled = true);
