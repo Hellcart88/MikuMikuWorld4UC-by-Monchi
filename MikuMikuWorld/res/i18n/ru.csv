@@ -427,7 +427,7 @@ insert_skill,Вставить навык
 set_fever_start,Установить начало FEVER
 set_fever_end,Установить конец FEVER
 quick_settings,Быстрые настройки
-edit_assist_settings,Изменить вспомогательные настройки
+edit_assist_settings,Вспомогательные настройки
 pinned_settings,Закрепленные настройки
 pin_quick_setting,Показывать в быстрых настройках
 unpin_quick_setting,Скрывать в быстрых настройках
