@@ -30,7 +30,7 @@ show_fps,Показывать FPS
 debug,Отладка
 create_auto_save,Создать файл автосохранения
 help,Помощь
-about,O программе
+about,О программе
 
 # Dialogs / Диалоговые окна
 file_not_found,Файл не найден
@@ -54,7 +54,7 @@ export_as_file_format,Экспортировать как...
 error,Ошибка
 error_load_score_file,Ошибка при чтении файла партитуры
 error_save_score_file,Ошибка при сохранении файла партитуры
-error_load_music_file,He удалось открыть музыкальный файл
+error_load_music_file,Не удалось открыть музыкальный файл
 score_partially_missing,Некоторые части партитуры могут отсутствовать!
 cancel,Отмена
 general,Основные
@@ -399,7 +399,7 @@ sound_effect_none,Ничего
 sound_effect_tap_perfect,Нажатие PERFECT
 sound_effect_flick,Флик
 sound_effect_trace,Трейс
-sound_effect_tick,Tик
+sound_effect_tick,Тик
 sound_effect_crit_tap,Нота (Крит)
 sound_effect_crit_flick,Флик (Крит)
 sound_effect_crit_trace,Трейс (Крит)
